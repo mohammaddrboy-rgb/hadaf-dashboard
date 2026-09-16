@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>داشبورد مدیریت — آموزشگاه هدف</title>
+  <link rel="icon" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">رفتن به محتوا</a>
+  <div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><img src="assets/logo.png" alt="لوگوی آموزشگاه هدف" width="40" height="40"></div>
+      <div class="brand-text"><b>آموزشگاه هدف</b><span>داشبورد مدیریت شعبات</span></div>
+    </div>
+    <nav id="nav" aria-label="منوی اصلی">
+      <button type="button" class="navbtn active" data-view="dashboard"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 12l9-8 9 8M5 10v10h14V10"/></svg>داشبورد</button>
+      <button type="button" class="navbtn" data-view="classes"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20V4H6.5A2.5 2.5 0 004 6.5v13z"/><path d="M4 19.5V6.5"/></svg>صنف‌ها</button>
+      <button type="button" class="navbtn" data-view="seminars"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.9L7 15v3.5c0 .8 2 2.5 4.5 2.5"/></svg>سمینار/وبینار/کارگاه</button>
+      <button type="button" class="navbtn" data-view="students"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/></svg>شاگردها</button>
+      <button type="button" class="navbtn" data-view="attendance"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 15l2 2 4-4"/></svg>حضور و غیاب</button>
+      <button type="button" class="navbtn" data-view="teachers"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/></svg>پرسنل</button>
+      <button type="button" class="navbtn" data-view="donations"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="8" cy="8" r="5"/><circle cx="16" cy="16" r="5"/></svg>سایر درآمدها</button>
+      <button type="button" class="navbtn" data-view="books"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20V4H6.5A2.5 2.5 0 004 6.5v13z"/><path d="M8 7h8M8 11h8"/></svg>کتاب و مطبوعات</button>
+      <button type="button" class="navbtn" data-view="expenses"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h10"/><circle cx="19" cy="17" r="2"/></svg>هزینه‌های روزانه</button>
+      <button type="button" class="navbtn" data-view="report"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>گزارش</button>
+      <button type="button" class="navbtn" data-view="projects"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>پروژه‌ها</button>
+      <button type="button" class="navbtn" data-view="meetings"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/><path d="M8 15l2 2 4-4"/></svg>جلسات هفتگی</button>
+      <button type="button" class="navbtn" data-view="shareholders"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>سهامداران</button>
+      <button type="button" class="navbtn" data-view="activityLog"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>گزارش فعالیت‌ها</button>
+      <button type="button" class="navbtn" data-view="settings"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.6-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.6V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.6 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.6 1z"/></svg>تنظیمات</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+        <span>نقش: <b id="role-badge" style="color:var(--gold-soft);"></b></span>
+        <button type="button" class="btn ghost small" style="padding:4px 10px; font-size:10.5px;" onclick="logoutRole()">خروج از نقش</button>
+      </div>
+      داده‌ها فقط در همین مرورگر ذخیره می‌شوند.
+    </div>
+  </aside>
+
+  <main id="main">
+    <!-- ================= DASHBOARD ================= -->
+    <section class="view active" id="view-dashboard">
+      <div class="topbar">
+        <div><h1>داشبورد</h1><p>نمای کلی وضعیت آموزشی و مالی آموزشگاه هدف</p></div>
+      </div>
+      <div class="cards" id="dash-cards"></div>
+      <div class="panel">
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>تازه‌ترین ثبت‌نام‌ها</h2>
+          <button type="button" class="btn ghost small" onclick="switchView('students')">مشاهده همه</button>
+        </div>
+        <div class="table-scroll"><table><thead><tr><th>نام شاگرد</th><th>صنف</th><th>تاریخ ثبت‌نام</th><th>وضعیت شهریه</th></tr></thead>
+        <tbody id="dash-recent-students"></tbody></table></div>
+        <div class="empty" id="dash-recent-students-empty" style="display:none;">هنوز شاگردی ثبت‌نام نشده.</div>
+        <div class="pagination" id="dash-recent-students-pagination"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a1.5 1.5 0 001.3 2.3h17.8a1.5 1.5 0 001.3-2.3L13.7 3.9a1.5 1.5 0 00-2.6 0z"/></svg>یادآوری شهریه‌های پرداخت‌نشده</h2></div>
+        <div class="table-scroll"><table><thead><tr><th>نام شاگرد</th><th>صنف</th><th>سرپرست/تماس</th><th>باقیمانده</th></tr></thead>
+        <tbody id="dash-unpaid"></tbody></table></div>
+        <div class="empty" id="dash-unpaid-empty" style="display:none;">فعلاً هیچ شهریه معوقی وجود ندارد.</div>
+        <div class="pagination" id="dash-unpaid-pagination"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>وضعیت صنف‌ها</h2></div>
+        <div class="table-scroll"><table><thead><tr><th>صنف</th><th>مدرس</th><th>آغاز</th><th>پایان</th><th>ثبت‌نامی</th><th>وضعیت</th></tr></thead>
+        <tbody id="dash-classes"></tbody></table></div>
+        <div class="empty" id="dash-classes-empty" style="display:none;">هنوز صنفی ثبت نشده.</div>
+        <div class="pagination" id="dash-classes-pagination"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="8" cy="8" r="5"/><circle cx="16" cy="16" r="5"/></svg>آخرین سایر درآمدها</h2>
+          <button type="button" class="btn ghost small" onclick="switchView('donations')">مشاهده همه</button>
+        </div>
+        <div class="table-scroll"><table><thead><tr><th>منبع درآمد</th><th>مبلغ</th><th>تاریخ</th><th>روش</th></tr></thead>
+        <tbody id="dash-recent-donations"></tbody></table></div>
+        <div class="empty" id="dash-recent-donations-empty" style="display:none;">هنوز درآمد ثبت نشده.</div>
+        <div class="pagination" id="dash-recent-donations-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ================= CLASSES ================= -->
+    <section class="view" id="view-classes">
+      <div class="topbar">
+        <div><h1>صنف‌ها</h1><p>انواع صنف‌ها، مدرس مربوطه، تاریخ آغاز و پایان و ظرفیت را ثبت کنید</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-classes"></div>
+          <button type="button" class="btn" onclick="openClassModal()">+ صنف جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="filterbar" id="classes-filters">
+          <button type="button" class="chip active" data-branch="all">همهٔ شعبه‌ها</button>
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>نام صنف</th><th>شعبه</th><th>دسته</th><th>مدرس</th><th>شیوه</th><th>ساعت</th><th>تاریخ آغاز</th><th>تاریخ پایان</th><th>ظرفیت</th><th>ثبت‌نامی</th><th>وضعیت</th><th>پیشرفت</th><th></th>
+          </tr></thead>
+          <tbody id="classes-table"></tbody>
+        </table>
+        </div>
+        <div class="empty" id="classes-empty" style="display:none;">هنوز صنفی ثبت نشده. با دکمه «صنف جدید» شروع کنید.</div>
+        <div class="pagination" id="classes-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ================= SEMINARS / WEBINARS / WORKSHOPS ================= -->
+    <section class="view" id="view-seminars">
+      <div class="topbar">
+        <div><h1>سمینار / وبینار / کارگاه</h1><p>رویدادهای آموزشگاه — تعیین کنید پولی است یا رایگان؛ در صورت پولی، هزینهٔ ثبت‌نام و تخفیف را وارد کنید</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-seminars"></div>
+          <button type="button" class="btn" onclick="openSeminarModal()">+ رویداد جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="table-scroll"><table>
+          <thead><tr><th>عنوان</th><th>نوع</th><th>شعبه/مکان</th><th>ارائه‌دهنده</th><th>تاریخ</th><th>وضعیت</th><th>هزینهٔ ثبت‌نام</th><th>شرکت‌کننده</th><th>درآمد تخمینی</th><th></th></tr></thead>
+          <tbody id="seminars-table"></tbody>
+        </table></div>
+        <div class="empty" id="seminars-empty" style="display:none;">هنوز رویدادی ثبت نشده.</div>
+      </div>
+    </section>
+
+    <!-- ================= STUDENTS ================= -->
+    <section class="view" id="view-students">
+      <div class="topbar">
+        <div><h1>شاگردها</h1><p>ثبت‌نام شاگردها، صنف مربوطه و وضعیت شهریه را مدیریت کنید</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-students"></div>
+          <button type="button" class="btn" onclick="openStudentModal()">+ ثبت‌نام جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="filterbar" id="students-filters">
+          <button type="button" class="chip active" data-filter="all">همه</button>
+          <button type="button" class="chip" data-filter="paid">پرداخت‌شده</button>
+          <button type="button" class="chip" data-filter="unpaid">پرداخت‌نشده</button>
+          <button type="button" class="chip" data-filter="free">رایگان</button>
+        </div>
+        <input id="students-search" type="text" placeholder="جست‌وجو بر اساس نام شاگرد، سرپرست یا صنف..." style="width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text); font-family:inherit; font-size:13px; margin-bottom:14px;" oninput="paginationState['students']=1; renderStudents();">
+        <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>کد</th><th>نام شاگرد</th><th>پایه/سن</th><th>سرپرست</th><th>تماس</th><th>صنف</th><th>شعبه</th><th>تاریخ ثبت‌نام</th>
+            <th>شهریه</th><th>تخفیف</th><th>پرداخت‌شده</th><th>باقیمانده</th><th>وضعیت</th><th>نتیجه</th><th></th>
+          </tr></thead>
+          <tbody id="students-table"></tbody>
+        </table>
+        </div>
+        <div class="empty" id="students-empty" style="display:none;">هنوز شاگردی ثبت‌نام نشده.</div>
+        <div class="pagination" id="students-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ================= ATTENDANCE ================= -->
+    <section class="view" id="view-attendance">
+      <div class="topbar">
+        <div><h1>حضور و غیاب</h1><p>یک صنف را انتخاب کنید تا فهرست شاگردان و جدول حضور و غیاب هر جلسه نمایش داده شود</p></div>
+      </div>
+      <div class="panel">
+        <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
+          <div class="field" style="max-width:420px; margin-bottom:0;"><label>صنف</label><select id="att-class-select" onchange="onAttendanceClassChange()"></select></div>
+          <button type="button" id="att-save-btn" class="btn" onclick="commitAttendanceSave()" disabled>ذخیرهٔ حضور و غیاب</button>
+          <span id="att-unsaved-badge" class="tag cost" style="display:none;">تغییرات ذخیره‌نشده</span>
+        </div>
+        <div id="att-grid-wrap"></div>
+        <div class="empty" id="attendance-empty" style="display:none;">این صنف هنوز شاگردی ندارد یا تاریخ آغاز آن مشخص نیست.</div>
+      </div>
+    </section>
+
+    <!-- ================= TEACHERS ================= -->
+    <section class="view" id="view-teachers">
+      <div class="topbar">
+        <div><h1>پرسنل</h1><p>مدیریت، مدرسان و کارمندان آموزشگاه — هرکدام با کد یکتای پرسنلی</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-teachers"></div>
+          <button type="button" class="btn" onclick="openTeacherModal()">+ پرسنل جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="table-scroll"><table>
+          <thead><tr><th>کد</th><th>نام</th><th>نقش</th><th>شماره تماس</th><th>مضامین</th><th>حقوق/دستمزد</th><th>تعداد صنف‌ها</th><th>صنف‌های تدریسی</th><th></th></tr></thead>
+          <tbody id="teachers-table"></tbody>
+        </table></div>
+        <div class="empty" id="teachers-empty" style="display:none;">هنوز مدرسی ثبت نشده.</div>
+        <div class="pagination" id="teachers-pagination"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>محاسبهٔ حقوق این ماه</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">تعداد صنف‌های هر مدرس در ماه جاری به‌صورت خودکار شمارش و در نرخ ضرب می‌شود؛ سپس مانده پیش‌پرداخت‌های تسویه‌نشده از آن کسر می‌گردد.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>مدرس</th><th>نوع پرداخت</th><th>صنف‌های این ماه</th><th>حقوق ناخالص</th><th>مانده پیش‌پرداخت</th><th>خالص قابل پرداخت</th><th></th></tr></thead>
+          <tbody id="payroll-table"></tbody>
+        </table></div>
+        <div class="empty" id="payroll-empty" style="display:none;">هنوز مدرسی ثبت نشده.</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="8" cy="8" r="5"/><circle cx="16" cy="16" r="5"/></svg>پیش‌پرداخت مدرسان</h2>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <div class="export-bar" id="export-teacherAdvances"></div>
+            <button type="button" class="btn ghost small" onclick="openAdvanceModal()">+ پیش‌پرداخت جدید</button>
+          </div>
+        </div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>مدرس</th><th>مبلغ</th><th>تاریخ</th><th>وضعیت</th><th>توضیحات</th><th></th></tr></thead>
+          <tbody id="advances-table"></tbody>
+        </table></div>
+        <div class="empty" id="advances-empty" style="display:none;">هنوز پیش‌پرداختی ثبت نشده.</div>
+      </div>
+    </section>
+
+    <!-- ================= DONATIONS ================= -->
+    <section class="view" id="view-donations">
+      <div class="topbar">
+        <div><h1>سایر درآمدها</h1><p>سایر درآمدها دریافت‌شده برای آموزشگاه هدف</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-donations"></div>
+          <button type="button" class="btn" onclick="openDonationModal()">+ درآمد جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="table-scroll"><table>
+          <thead><tr><th>منبع درآمد</th><th>مبلغ</th><th>تاریخ</th><th>روش</th><th>توضیحات</th><th></th></tr></thead>
+          <tbody id="donations-table"></tbody>
+        </table></div>
+        <div class="empty" id="donations-empty" style="display:none;">هنوز درآمد ثبت نشده.</div>
+        <div class="pagination" id="donations-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ================= BOOKS & MATERIALS ================= -->
+    <section class="view" id="view-books">
+      <div class="topbar">
+        <div><h1>کتاب و مطبوعات</h1><p>خرید کتاب از کتاب‌فروشی/مطبعه، فروش کتاب و کارت شاگردی به شاگردان، و سود این بخش — جدا از سایر درآمدها</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-bookPurchases"></div>
+          <button type="button" class="btn" onclick="openBookPurchaseModal()">+ خرید کتاب جدید</button>
+        </div>
+      </div>
+
+      <div class="cards" id="books-summary-cards" style="margin-bottom:0;"></div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>روند ۶ ماه اخیر — کتاب و کارت شاگردی</h2></div>
+        <div id="books-trend-chart" style="display:flex; align-items:flex-end; gap:10px; padding:10px 4px 0;"></div>
+        <div style="display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-dim);">
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--income); margin-left:5px;"></span>درآمد (فروش کتاب و کارت)</span>
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--cost); margin-left:5px;"></span>هزینه (خرید از کتاب‌فروشی/مطبعه)</span>
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--gold-soft); margin-left:5px;"></span>سود خالص</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>خلاصهٔ منابع (کتاب‌فروشی/مطبعه)</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">روی نام هر منبع کلیک کنید تا سابقهٔ کامل سفارش‌ها، مبالغ و باقیمانده‌های آن نمایش داده شود.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>منبع</th><th>تعداد سفارش</th><th>مجموع هزینه</th><th>مجموع پرداخت‌شده</th><th>باقیماندهٔ بدهی</th></tr></thead>
+          <tbody id="book-sources-table"></tbody>
+        </table></div>
+        <div class="empty" id="book-sources-empty" style="display:none;">هنوز منبعی ثبت نشده.</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>خریدهای کتاب (هزینه)</h2></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>عنوان</th><th>منبع (کتاب‌فروشی/مطبعه)</th><th>شعبه</th><th>تعداد</th><th>قیمت واحد</th><th>مجموع هزینه</th><th>پرداخت‌شده</th><th>باقیمانده</th><th>سررسید</th><th>تاریخ سفارش</th><th></th></tr></thead>
+          <tbody id="book-purchases-table"></tbody>
+        </table></div>
+        <div class="empty" id="book-purchases-empty" style="display:none;">هنوز خریدی ثبت نشده.</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>فروش کتاب و کارت شاگردی به شاگردان (درآمد)</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">این جدول از بخش «کتاب و کارت شاگردی» در فرم ثبت‌نام هر شاگرد ساخته می‌شود.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>شاگرد</th><th>صنف</th><th>کتاب</th><th>قیمت کتاب</th><th>وضعیت کتاب</th><th>قیمت کارت</th><th>وضعیت کارت</th><th>تاریخ ثبت‌نام</th></tr></thead>
+          <tbody id="book-sales-table"></tbody>
+        </table></div>
+        <div class="empty" id="book-sales-empty" style="display:none;">هنوز فروشی ثبت نشده.</div>
+      </div>
+    </section>
+
+    <!-- ================= EXPENSES ================= -->
+    <section class="view" id="view-expenses">
+      <div class="topbar">
+        <div><h1>هزینه‌های روزانه</h1><p>هزینه‌های روزمرهٔ آموزشگاه — حقوق مدرسان، اجاره، قبض، لوازم آموزشی و سایر هزینه‌ها</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-expenses"></div>
+          <button type="button" class="btn" onclick="openExpenseModal()">+ هزینه جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="filterbar" id="expenses-filters"></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>شعبه</th><th>دسته</th><th>مبلغ</th><th>تاریخ</th><th>توضیحات</th><th></th></tr></thead>
+          <tbody id="expenses-table"></tbody>
+        </table></div>
+        <div class="empty" id="expenses-empty" style="display:none;">هنوز هزینهی ثبت نشده.</div>
+      </div>
+    </section>
+
+    <!-- ================= REPORT ================= -->
+    <section class="view" id="view-report">
+      <div class="topbar">
+        <div><h1>گزارش</h1><p>خلاصهٔ مالی و عملیاتی آموزشگاه هدف</p></div>
+        <button type="button" class="btn" onclick="exportFullReportExcel()">خروجی اکسل گزارش جامع</button>
+      </div>
+      <div class="filterbar" id="report-filters"></div>
+      <div class="cards" id="report-cards"></div>
+      <div class="panel">
+        <div class="panel-head"><h2>نمودار مقایسه‌ای مالی</h2></div>
+        <div class="barwrap">
+          <div class="bargroup"><div class="bar income" id="bar-income"></div><div class="barlabel">سایر درآمدها</div></div>
+          <div class="bargroup"><div class="bar cost" id="bar-cost"></div><div class="barlabel">هزینه‌ها</div></div>
+          <div class="bargroup"><div class="bar profit" id="bar-profit"></div><div class="barlabel">باقیماندهٔ خالص</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>خلاصهٔ عملیاتی</h2></div>
+        <div class="cards" id="report-ops-cards" style="margin-bottom:0;"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>ریز هزینه‌ها بر اساس دسته</h2></div>
+        <table><tbody id="report-expense-breakdown"></tbody></table>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>مقایسهٔ شعبه‌ها</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">درآمد شامل شهریهٔ دریافتی شاگردها، درآمد رویدادها و درآمد کتاب/کارت شاگردی همان شعبه است؛ هزینه‌ها شامل هزینه‌های روزانه و خرید کتاب همان شعبه نیز می‌شود. درصدها نسبت به مجموع کل شعبه‌ها محاسبه می‌شود (بازهٔ گزارش انتخاب‌شده در بالا).</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>شعبه</th><th>صنف‌های فعال</th><th>شاگردها</th><th>درآمد</th><th>هزینه‌ها</th><th>سود خالص</th></tr></thead>
+          <tbody id="report-branch-breakdown"></tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>مقایسهٔ فصلی (سال به سال)</h2>
+          <div class="export-bar">
+            <select id="season-select" onchange="onSeasonChange()">
+              <option value="بهار">بهار (حمل، ثور، جوزا)</option>
+              <option value="تابستان" selected>تابستان (سرطان، اسد، سنبله)</option>
+              <option value="پاییز">پاییز (میزان، عقرب، قوس)</option>
+              <option value="زمستان">زمستان (جدی، دلو، حوت)</option>
+            </select>
+          </div>
+        </div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">همان فصل را در سال‌های مختلف با هم مقایسه کنید — مثلاً تابستان امسال در برابر تابستان سال گذشته. درصدهای رنگی، تغییر نسبت به همان فصل در سال قبل را نشان می‌دهند.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>سال</th><th>صنف‌های آغازشده</th><th>ثبت‌نامی‌ها</th><th>درآمد</th><th>هزینه‌ها</th><th>سود خالص</th></tr></thead>
+          <tbody id="season-comparison-table"></tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>روند ۶ ماه اخیر</h2></div>
+        <div id="trend-chart" style="display:flex; align-items:flex-end; gap:10px; padding:10px 4px 0;"></div>
+        <div style="display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-dim);">
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--income);margin-inline-end:4px;"></span>سایر درآمدها</span>
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--cost);margin-inline-end:4px;"></span>هزینه‌ها</span>
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--gold-soft);margin-inline-end:4px;"></span>باقیمانده</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PROJECTS ================= -->
+    <section class="view" id="view-projects">
+      <div class="topbar">
+        <div><h1>پروژه‌ها</h1><p>فعالیت‌ها و برنامه‌های بزرگ‌تر آموزشگاه — کمپاین‌ها، بازدیدها، مسابقات و غیره</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-projects"></div>
+          <button type="button" class="btn" onclick="openProjectModal()">+ پروژهٔ جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="table-scroll"><table>
+          <thead><tr><th>نام پروژه</th><th>دسته</th><th>مسئول</th><th>تاریخ آغاز</th><th>تاریخ پایان</th><th>وضعیت</th><th>پیشرفت</th><th></th></tr></thead>
+          <tbody id="projects-table"></tbody>
+        </table></div>
+        <div class="empty" id="projects-empty" style="display:none;">هنوز پروژه‌ای ثبت نشده.</div>
+      </div>
+    </section>
+
+    <!-- ================= WEEKLY MEETINGS ================= -->
+    <section class="view" id="view-meetings">
+      <div class="topbar">
+        <div><h1>جلسات هفتگی</h1><p>صورت‌جلسه، یادداشت‌ها و کارهای هفتهٔ آینده</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-meetings"></div>
+          <button type="button" class="btn" onclick="openMeetingModal()">+ جلسهٔ جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="table-scroll"><table>
+          <thead><tr><th>تاریخ جلسه</th><th>حاضرین</th><th>خلاصهٔ یادداشت‌ها</th><th>کارها</th><th></th></tr></thead>
+          <tbody id="meetings-table"></tbody>
+        </table></div>
+        <div class="empty" id="meetings-empty" style="display:none;">هنوز جلسه‌ای ثبت نشده.</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>کارهای باز از جلسات قبلی</h2></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>کار</th><th>مسئول</th><th>از جلسهٔ تاریخ</th><th>وضعیت</th></tr></thead>
+          <tbody id="open-tasks-table"></tbody>
+        </table></div>
+        <div class="empty" id="open-tasks-empty" style="display:none;">هیچ کار بازی وجود ندارد.</div>
+      </div>
+    </section>
+
+    <!-- ================= SHAREHOLDERS ================= -->
+    <section class="view" id="view-shareholders">
+      <div class="topbar">
+        <div><h1>سهامداران</h1><p>سهامداران اصلی آموزشگاه هدف و سهم هرکدام از سود — این بخش فقط برای سهامداران قابل‌مشاهده است</p></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="export-bar" id="export-shareholders"></div>
+          <button type="button" class="btn" onclick="openShareholderModal()">+ سهامدار جدید</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="table-scroll"><table>
+          <thead><tr><th>کد</th><th>نام</th><th>سهم از سود</th><th>شماره تماس</th><th></th></tr></thead>
+          <tbody id="shareholders-table"></tbody>
+        </table></div>
+        <div class="empty" id="shareholders-empty" style="display:none;">هنوز سهامداری ثبت نشده.</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>تقسیم سود خالص مؤسسه</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">بر اساس سود خالص کل (تمام شعبه‌ها و منابع درآمد، طبق بازهٔ گزارش) و درصد سهم هرکدام.</p>
+        <div class="cards" id="shareholder-split-cards"></div>
+      </div>
+    </section>
+
+    <!-- ================= ACTIVITY LOG ================= -->
+    <section class="view" id="view-activityLog">
+      <div class="topbar">
+        <div><h1>گزارش فعالیت‌ها</h1><p>هر تغییری که در داشبورد ثبت شود اینجا با نام و نقش شخص ثبت‌کننده ظاهر می‌شود — فقط برای سهامداران</p></div>
+      </div>
+      <div class="panel">
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">⚠️ این گزارش بر اساس نامی است که هرکس هنگام ورود انتخاب/وارد کرده — یک سامانهٔ هویت‌سنجی واقعی نیست، اما تغییرات مهم مالی و اطلاعاتی را با زمان، نقش و نام ثبت می‌کند.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>زمان</th><th>نقش</th><th>نام</th><th>عملیات</th><th>بخش</th><th>جزئیات</th></tr></thead>
+          <tbody id="activity-log-table"></tbody>
+        </table></div>
+        <div class="empty" id="activity-log-empty" style="display:none;">هنوز فعالیتی ثبت نشده.</div>
+        <div class="pagination" id="activity-log-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ================= SETTINGS ================= -->
+    <section class="view" id="view-settings">
+      <div class="topbar">
+        <div><h1>تنظیمات</h1><p>پشتیبان‌گیری از داده‌ها و بازگردانی</p></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>خروجی گرفتن از داده‌ها</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">همهٔ اطلاعات (صنف‌ها، حضور و غیاب، سمینار/وبینار/کارگاه، پروندهٔ شاگردها، پرسنل، پیش‌پرداخت مدرسان، سایر درآمدها، کتاب و مطبوعات، هزینه‌ها، پروژه‌ها، جلسات هفتگی، سهامداران) در یک فایل ذخیره می‌شود. این فایل را جایی امن (گوگل‌درایو، تلگرام خودتان و غیره) نگه دارید. توجه: عکس‌های آپلودشده نیز داخل همین فایل ذخیره می‌شوند و ممکن است حجم فایل را افزایش دهند.</p>
+        <button type="button" class="btn" onclick="exportBackup()">دانلود فایل پشتیبان</button>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>بازگردانی از فایل پشتیبان</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">⚠️ بازگردانی، تمام داده‌های فعلی را با محتوای فایل جایگزین می‌کند.</p>
+        <input id="restore-file-input" type="file" accept="application/json" onchange="importBackup(this)">
+      </div>
+      <div class="panel" id="settings-referral-panel" style="display:none;">
+        <div class="panel-head"><h2>درصد تخفیف معرفی شاگرد جدید</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">وقتی کد یک شاگرد در ثبت‌نام شاگرد جدید به‌عنوان «کد معرف» استفاده شود، این دو درصد به‌صورت خودکار به شهریهٔ مربوطه افزوده می‌شود. تخفیف خانوادگی (٪۲۵ برای سومین عضو خانواده در یک ماه) ثابت است.</p>
+        <div class="field-row">
+          <div class="field"><label>تخفیف برای معرف (شاگرد قدیمی)</label><input id="f-ref-referrer" type="number" min="0" max="100" value=""></div>
+          <div class="field"><label>تخفیف برای شاگرد جدید</label><input id="f-ref-referee" type="number" min="0" max="100" value=""></div>
+        </div>
+        <button type="button" class="btn" onclick="saveReferralSettings()">ذخیره</button>
+      </div>
+      <div class="panel" id="settings-pins-panel" style="display:none;">
+        <div class="panel-head"><h2>رمزهای عبور ورود</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">⚠️ این رمزها فقط یک محدودیت سادهٔ نمایشی هستند، نه یک سامانهٔ امنیتی واقعی — فایل به‌صورت آفلاین در مرورگر اجرا می‌شود و هرکسی که به خودِ فایل دسترسی داشته باشد می‌تواند این رمزها را در کد فایل ببیند. برای اطلاعات واقعاً محرمانه، این فایل مناسب نیست.</p>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0;">هر سهامدار، مدرس و مدیر شعبه اکنون رمز عبور یکتای خودش را دارد که هنگام ساختن پروندهٔ او به‌صورت خودکار ساخته می‌شود. برای دیدن یا تعویض رمز یک نفر، از صفحهٔ «سهامداران» یا «پرسنل» روی کد او کلیک کنید تا پروندهٔ او باز شود.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="access-gate" id="access-gate" role="dialog" aria-modal="true" aria-labelledby="gate-title">
+  <div class="gate-card">
+    <div class="brand-mark" style="width:52px; height:52px; margin:0 auto 14px;"><img src="assets/logo.png" alt="لوگوی آموزشگاه هدف" width="52" height="52"></div>
+    <h2 id="gate-title">آموزشگاه هدف</h2>
+    <p class="sub" style="margin-bottom:18px;">برای ورود، نقش خود را انتخاب و رمز عبور را وارد کنید</p>
+
+    <div class="gate-role">
+      <div class="gate-role-head">سهامدار <span style="color:var(--text-faint); font-weight:400;">— دسترسی کامل</span></div>
+      <select id="gate-shareholder-select" style="margin-bottom:8px;" aria-label="انتخاب سهامدار"><option value="">نام خود را انتخاب کنید</option></select>
+      <div class="field-row">
+        <input type="password" id="gate-pin-shareholder" placeholder="رمز عبور" aria-label="رمز عبور سهامدار" aria-describedby="gate-error-shareholder" autocomplete="current-password">
+        <button type="button" class="btn" onclick="attemptLogin('shareholder')">ورود</button>
+      </div>
+      <p class="gate-error" id="gate-error-shareholder">رمز عبور یا انتخاب نادرست است.</p>
+    </div>
+
+    <div class="gate-role">
+      <div class="gate-role-head">مدیر شعبه <span style="color:var(--text-faint); font-weight:400;">— همه بخش‌ها به‌جز سهامداران</span></div>
+      <select id="gate-manager-select" style="margin-bottom:8px;" aria-label="انتخاب مدیر شعبه"><option value="">نام خود را انتخاب کنید</option></select>
+      <div class="field-row">
+        <input type="password" id="gate-pin-manager" placeholder="رمز عبور" aria-label="رمز عبور مدیر شعبه" aria-describedby="gate-error-manager" autocomplete="current-password">
+        <button type="button" class="btn" onclick="attemptLogin('manager')">ورود</button>
+      </div>
+      <p class="gate-error" id="gate-error-manager">رمز عبور یا انتخاب نادرست است.</p>
+    </div>
+
+    <div class="gate-role">
+      <div class="gate-role-head">مدرس <span style="color:var(--text-faint); font-weight:400;">— صنف‌های خودش و برنامهٔ کلی</span></div>
+      <select id="gate-teacher-select" style="margin-bottom:8px;" aria-label="انتخاب مدرس"><option value="">نام خود را انتخاب کنید</option></select>
+      <div class="field-row">
+        <input type="password" id="gate-pin-teacher" placeholder="رمز عبور" aria-label="رمز عبور مدرس" aria-describedby="gate-error-teacher" autocomplete="current-password">
+        <button type="button" class="btn" onclick="attemptLogin('teacher')">ورود</button>
+      </div>
+      <p class="gate-error" id="gate-error-teacher">رمز عبور یا انتخاب نادرست است.</p>
+    </div>
+
+    <div class="gate-role">
+      <div class="gate-role-head">کارمند <span style="color:var(--text-faint); font-weight:400;">— پذیرش، ثبت‌نام و امور روزمره</span></div>
+      <select id="gate-employee-select" style="margin-bottom:8px;" aria-label="انتخاب کارمند"><option value="">نام خود را انتخاب کنید</option></select>
+      <div class="field-row">
+        <input type="password" id="gate-pin-employee" placeholder="رمز عبور" aria-label="رمز عبور کارمند" aria-describedby="gate-error-employee" autocomplete="current-password">
+        <button type="button" class="btn" onclick="attemptLogin('employee')">ورود</button>
+      </div>
+      <p class="gate-error" id="gate-error-employee">رمز عبور یا انتخاب نادرست است.</p>
+    </div>
+
+    <div id="gate-generated-passwords" style="display:none; text-align:right; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:10px; max-height:160px; overflow-y:auto; font-size:11.5px;"></div>
+
+    <button type="button" class="btn ghost small" style="width:100%; margin-top:10px;" onclick="toggleGateAllPasswords()">نمایش فهرست همهٔ رمزهای عبور فعلی</button>
+    <div id="gate-all-passwords" style="display:none; text-align:right; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:8px; max-height:220px; overflow-y:auto; font-size:11.5px;"></div>
+
+    <p class="hint" style="margin-top:10px; text-align:center;">رمزهای عبور از پروندهٔ هر شخص (در صفحهٔ «سهامداران» یا «پرسنل») توسط سهامدار قابل مشاهده و تغییرند.</p>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-label="پنجره">
+  <div class="modal" id="modal-body"></div>
+</div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="js/seed.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
