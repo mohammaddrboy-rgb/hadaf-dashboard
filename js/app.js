@@ -82,6 +82,7 @@ const VIEW_TITLES = {
   meetings: { title: 'جلسات هفتگی', sub: 'صورت‌جلسات، تصمیم‌گیری‌ها و پیگیری امور معوق' },
   shareholders: { title: 'سهامداران', sub: 'مدیریت سهامداران و فرمول تقسیم سود مؤسسه' },
   activityLog: { title: 'گزارش فعالیت‌ها', sub: 'تاریخچه و لاگ تغییرات اطلاعات سیستم' },
+  discountCodes: { title: 'کدهای تخفیف مکاتب', sub: 'مدیریت کدهای تخفیف توزیع‌شده در مکاتب، کمیشن مدیران و وضعیت استفاده' },
   settings: { title: 'تنظیمات سامانه', sub: 'پشتیبان‌گیری، بازگردانی و تنظیمات تخفیف' }
 };
 
@@ -91,9 +92,18 @@ let db = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
 if(!db){
   db = window.HADAF_SEED;
 }
-['classes','students','teachers','donations','expenses','projects','meetings','seminars','teacherAdvances','studentProfiles','shareholders','bookPurchases','attendance','activityLog'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+['classes','students','teachers','donations','expenses','projects','meetings','seminars','teacherAdvances','studentProfiles','shareholders','bookPurchases','attendance','activityLog','discountCodes'].forEach(k=>{ if(!db[k]) db[k]=[]; });
 if(!db.accessPins) db.accessPins = { shareholder:'4545', manager:'2026', teacher:'1010' };
 if(!db.referralSettings) db.referralSettings = { referrerDiscount:5, refereeDiscount:10 };
+if(!db.discountCodeSettings) db.discountCodeSettings = { defaultDiscount:10, defaultCommission:5 };
+// One-time load of the 1000 pre-generated school discount codes shipped in the seed
+if(!db.discountCodesSeeded){
+  if((!db.discountCodes || !db.discountCodes.length) && window.HADAF_SEED && window.HADAF_SEED.discountCodes){
+    db.discountCodes = window.HADAF_SEED.discountCodes.map(c=>Object.assign({}, c));
+  }
+  db.discountCodesSeeded = true;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e) {}
+}
 function migrateLegacyData(){
   let changed = false;
   db.teachers.forEach(t=>{
@@ -124,6 +134,8 @@ function migrateLegacyData(){
     if(s.idCardPrice===undefined){ s.idCardPrice=0; s.idCardPaid=false; changed=true; }
     if(s.referralDiscountPercent===undefined){ s.referralDiscountPercent=0; changed=true; }
     if(s.familyDiscountPercent===undefined){ s.familyDiscountPercent=0; changed=true; }
+    if(s.schoolCodeDiscountPercent===undefined){ s.schoolCodeDiscountPercent=0; changed=true; }
+    if(s.schoolCode===undefined){ s.schoolCode=''; changed=true; }
     if(s.referredBy===undefined){ s.referredBy=''; changed=true; }
   });
   db.studentProfiles.forEach(p=>{
@@ -194,7 +206,7 @@ function importBackup(input){
   reader.onload = e=>{
     try{
       const parsed = JSON.parse(e.target.result);
-      db = Object.assign({ classes:[], students:[], teachers:[], donations:[], expenses:[], projects:[], meetings:[], seminars:[], teacherAdvances:[], studentProfiles:[], shareholders:[], bookPurchases:[], attendance:[], activityLog:[], accessPins:{shareholder:'4545',manager:'2026',teacher:'1010'}, referralSettings:{referrerDiscount:5, refereeDiscount:10} }, parsed);
+      db = Object.assign({ classes:[], students:[], teachers:[], donations:[], expenses:[], projects:[], meetings:[], seminars:[], teacherAdvances:[], studentProfiles:[], shareholders:[], bookPurchases:[], attendance:[], activityLog:[], discountCodes:[], accessPins:{shareholder:'4545',manager:'2026',teacher:'1010'}, referralSettings:{referrerDiscount:5, refereeDiscount:10}, discountCodeSettings:{defaultDiscount:10, defaultCommission:5} }, parsed);
       save();
       alert('بازگردانی با موفقیت انجام شد.');
     }catch(err){
@@ -383,7 +395,7 @@ function navAllowed(view){
   if(currentRole==='shareholder') return true;
   if(currentRole==='manager') return view!=='shareholders' && view!=='activityLog';
   if(currentRole==='teacher') return view==='classes' || view==='attendance';
-  if(currentRole==='employee') return view==='classes' || view==='students' || view==='seminars' || view==='books';
+  if(currentRole==='employee') return view==='classes' || view==='students' || view==='seminars' || view==='books' || view==='discountCodes';
   return false;
 }
 function applyRoleVisibility(){
@@ -622,6 +634,7 @@ function switchView(name, updateHash = true){
 
   if(name==='classes') renderClasses();
   if(name==='attendance') renderAttendanceClassOptions();
+  if(name==='discountCodes' && typeof renderDiscountCodes==='function') renderDiscountCodes();
 }
 
 // Handle Browser Back / Forward buttons & Hash navigation
@@ -737,6 +750,7 @@ function studentsToRows(list){
     'نام سرپرست': profileGuardianName(s.profileId), 'تماس سرپرست': profileGuardianPhone(s.profileId),
     'صنف': className(s.classId), 'شعبه': classBranch(s.classId), 'تاریخ ثبت‌نام': toJalali(s.registerDate), 'شهریه (افغانی)': s.feeAmount||0,
     'درصد تخفیف دستی': s.discountPercent||0, 'درصد تخفیف معرفی': s.referralDiscountPercent||0, 'درصد تخفیف خانوادگی': s.familyDiscountPercent||0,
+    'کد تخفیف مکتب': s.schoolCode||'', 'درصد تخفیف کد مکتب': s.schoolCodeDiscountPercent||0,
     'کد معرف': s.referredBy?profileCode(s.referredBy):'', 'شهریهٔ نهایی (افغانی)': studentNetFee(s),
     'پرداخت‌شده (افغانی)': s.paidAmount||0, 'باقیمانده (افغانی)': studentRemaining(s), 'وضعیت': studentStatus(s),
     'کتاب': s.bookTitle||'', 'قیمت کتاب (افغانی)': s.bookPrice||0, 'کتاب پرداخت‌شده': s.bookPaid?'بله':'خیر',
@@ -924,7 +938,7 @@ function familyDiscountCheck(familyId, registerDateISO){
   return sameMonthCount>=2 ? FAMILY_DISCOUNT_PERCENT : 0;
 }
 function studentTotalDiscountPercent(s){
-  const total = (Number(s.discountPercent)||0) + (Number(s.referralDiscountPercent)||0) + (Number(s.familyDiscountPercent)||0);
+  const total = (Number(s.discountPercent)||0) + (Number(s.referralDiscountPercent)||0) + (Number(s.familyDiscountPercent)||0) + (Number(s.schoolCodeDiscountPercent)||0);
   return Math.min(100, total);
 }
 function studentNetFee(s){ return netAfterDiscount(s.feeAmount, studentTotalDiscountPercent(s)); }
@@ -1214,6 +1228,10 @@ function openStudentModal(id){
     <div class="calc-box"><span>شهریهٔ نهایی (فقط تخفیف دستی · تخفیف معرفی/خانوادگی پس از ذخیره افزوده می‌شود)</span><b id="f-st-net-display">${afn(netAfterDiscount(s?s.feeAmount:0, s?s.discountPercent:0))}</b></div>
     <div class="field" style="margin-top:12px;"><label>مبلغ پرداخت‌شده</label><input id="f-st-paid" class="money-input" value="${s&&s.paidAmount?numFmt(s.paidAmount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     ${!s ? `
+      <div class="field"><label>کد تخفیف مکتب (اختیاری)</label>
+        <input id="f-st-school-code" placeholder="کد چاپ‌شده روی برگهٔ مکتب را وارد کنید" oninput="onSchoolCodeInput()" autocomplete="off">
+        <div id="f-st-school-code-msg" style="margin-top:6px; font-size:12px; display:none;"></div>
+      </div>
       <div class="field"><label>کد معرف (اختیاری)</label><input id="f-st-referral-code" list="dl-profiles" placeholder="کد شاگردی که این شخص را معرفی کرده">
       </div>
       <p class="hint" style="margin:-4px 0 12px;">در صورت وارد کردن کد معرف معتبر، ${faDigits(db.referralSettings.refereeDiscount)}٪ تخفیف به شهریهٔ این ثبت‌نام و ${faDigits(db.referralSettings.referrerDiscount)}٪ تخفیف به آخرین ثبت‌نام معرف افزوده می‌شود (قابل تغییر در تنظیمات). همچنین اگر این سومین (یا بیشتر) عضو یک خانواده باشد که در همین ماه ثبت‌نام می‌کند، ${faDigits(FAMILY_DISCOUNT_PERCENT)}٪ تخفیف خانوادگی نیز به‌صورت خودکار اعمال می‌شود.</p>
@@ -1281,6 +1299,19 @@ function updateStudentCalc(){
 }
 function saveStudent(id){
   const existing = id ? db.students.find(x=>x.id===id) : null;
+  // Resolve & validate school discount code BEFORE any data is mutated (avoids orphan profiles on error)
+  let resolvedSchoolCode = null;
+  if(!existing){
+    const codeInput = document.getElementById('f-st-school-code');
+    const codeVal = codeInput ? codeInput.value.trim() : '';
+    if(codeVal){
+      const dc = findDiscountCode(codeVal);
+      if(!dc){ alert('کد تخفیف واردشده معتبر نیست. لطفاً کد را بررسی کنید یا خالی بگذارید.'); return; }
+      if(dc.status==='used'){ alert('این کد تخفیف قبلاً استفاده شده و دیگر معتبر نیست.'); return; }
+      if(dc.status==='void'){ alert('این کد تخفیف باطل شده و قابل استفاده نیست.'); return; }
+      resolvedSchoolCode = dc;
+    }
+  }
   let profileId;
   if(existing){
     profileId = existing.profileId;
@@ -1313,6 +1344,8 @@ function saveStudent(id){
     discountPercent: Number(document.getElementById('f-st-discount').value)||0,
     referralDiscountPercent: existing ? (existing.referralDiscountPercent||0) : 0,
     familyDiscountPercent: existing ? (existing.familyDiscountPercent||0) : 0,
+    schoolCodeDiscountPercent: existing ? (existing.schoolCodeDiscountPercent||0) : 0,
+    schoolCode: existing ? (existing.schoolCode||'') : '',
     referredBy: existing ? (existing.referredBy||'') : '',
     paidAmount: moneyNum('f-st-paid'),
     bookTitle: document.getElementById('f-st-book-title').value.trim(),
@@ -1347,6 +1380,18 @@ function saveStudent(id){
     if(profileNow && profileNow.familyId){
       rec.familyDiscountPercent = familyDiscountCheck(profileNow.familyId, rec.registerDate);
     }
+    // School discount code: apply its discount and mark the code as used (single-use)
+    if(resolvedSchoolCode){
+      rec.schoolCode = resolvedSchoolCode.code;
+      rec.schoolCodeDiscountPercent = Number(resolvedSchoolCode.discountPercent)||0;
+      resolvedSchoolCode.status = 'used';
+      resolvedSchoolCode.usedByProfileId = profileId;
+      resolvedSchoolCode.usedByStudentName = profileName(profileId);
+      resolvedSchoolCode.usedAt = rec.registerDate || todayISO();
+      resolvedSchoolCode.usedByActor = currentActorName || '';
+      resolvedSchoolCode.usedEnrollmentId = rec.id;
+      logAction('استفاده از کد تخفیف', 'کد تخفیف مکتب', `${resolvedSchoolCode.code} · ${profileName(profileId)} · ${faDigits(rec.schoolCodeDiscountPercent)}٪`);
+    }
   }
 
   if(id){ const idx = db.students.findIndex(x=>x.id===id); db.students[idx]=rec; }
@@ -1354,7 +1399,7 @@ function saveStudent(id){
   logAction(id?'ویرایش':'ثبت‌نام', 'ثبت‌نام شاگرد', `${profileName(profileId)} · ${className(rec.classId)}`);
   closeModal(); save();
 }
-function deleteStudent(id){ if(!confirm('این ثبت‌نام حذف شود؟ (پروندهٔ شاگرد و ثبت‌نامی‌های دیگر او حذف نخواهد شد)')) return; const it=db.students.find(x=>x.id===id); const lbl=it?`${profileName(it.profileId)} · ${className(it.classId)}`:''; db.students = db.students.filter(x=>x.id!==id); logAction('حذف','ثبت‌نام شاگرد',lbl); save(); }
+function deleteStudent(id){ if(!confirm('این ثبت‌نام حذف شود؟ (پروندهٔ شاگرد و ثبت‌نامی‌های دیگر او حذف نخواهد شد)')) return; const it=db.students.find(x=>x.id===id); const lbl=it?`${profileName(it.profileId)} · ${className(it.classId)}`:''; const freed=(db.discountCodes||[]).find(c=>c.usedEnrollmentId===id); if(freed){ freed.status='unused'; freed.usedByProfileId=''; freed.usedByStudentName=''; freed.usedAt=''; freed.usedByActor=''; freed.usedEnrollmentId=''; logAction('آزادسازی کد تخفیف','کد تخفیف مکتب',`${freed.code} · حذف ثبت‌نام`); } db.students = db.students.filter(x=>x.id!==id); logAction('حذف','ثبت‌نام شاگرد',lbl); save(); }
 
 /* ---------------- Student profile modal ---------------- */
 function openStudentProfileModal(profileId){
@@ -2839,6 +2884,7 @@ function renderAll(){
   renderDashboard(); renderClasses(); renderSeminars(); renderStudents(); renderTeachers(); renderDonations(); renderExpenses();
   renderProjects(); renderMeetings(); renderTeacherAdvances(); renderReport(); renderMonthlyTrend();
   renderBooks(); renderShareholders(); renderSettingsPins(); renderActivityLog();
+  if(typeof renderDiscountCodes==='function') renderDiscountCodes();
   if(document.getElementById('att-class-select') && document.getElementById('att-class-select').value) renderAttendanceGrid();
 }
 renderReportFilterChips();

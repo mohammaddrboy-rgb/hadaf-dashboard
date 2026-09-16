@@ -90,6 +90,10 @@
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>
           گزارش جامع
         </button>
+        <button type="button" class="navbtn" data-view="discountCodes">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 12l-2-2h-6l-8 8 6 6 8-8v-4z" transform="rotate(-45 12 12)"/><circle cx="15" cy="9" r="1.2"/></svg>
+          کدهای تخفیف
+        </button>
       </div>
 
       <div class="nav-group">
@@ -544,8 +548,63 @@
     </section>
 
     <!-- ================= SETTINGS ================= -->
+    <section class="view" id="view-discountCodes">
+      <div class="panel">
+        <div class="panel-head"><h2>خلاصهٔ کدهای تخفیف مکاتب</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">این کدها بین مدیران مکاتب توزیع می‌شوند. هنگام ثبت‌نام، کارمند کد را در فرم ثبت‌نام شاگرد وارد می‌کند؛ اگر کد معتبر و استفاده‌نشده باشد، تخفیف روی شهریه اعمال و کد «استفاده‌شده» علامت‌گذاری می‌شود و دیگر معتبر نخواهد بود. هر کد فقط یک‌بار قابل استفاده است.</p>
+        <div class="cards" id="dc-stats"></div>
+      </div>
+
+      <div class="panel" id="dc-manage-panel" style="display:none;">
+        <div class="panel-head"><h2>ساخت کدهای جدید و تخصیص به مکتب</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">برای هر مکتب یا مدیر، یک دسته کد بسازید. «درصد تخفیف» از شهریهٔ شاگرد کم می‌شود و «درصد کمیشن» سهم مدیر مکتب است (برای گزارش پرداختی نگهداری می‌شود).</p>
+        <div class="field-row">
+          <div class="field"><label>تعداد کد</label><input id="f-dc-count" type="number" min="1" max="5000" value="50"></div>
+          <div class="field"><label>درصد تخفیف شاگرد</label><input id="f-dc-discount" type="number" min="0" max="100" value="10"></div>
+          <div class="field"><label>درصد کمیشن مدیر</label><input id="f-dc-commission" type="number" min="0" max="100" value="5"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>نام مکتب (اختیاری)</label><input id="f-dc-school" placeholder="مثلاً: لیسهٔ استقلال"></div>
+          <div class="field"><label>نام مدیر/مسئول (اختیاری)</label><input id="f-dc-manager" placeholder="نام گیرندهٔ دسته کد"></div>
+        </div>
+        <button type="button" class="btn" onclick="generateDiscountCodesUI()">ساخت کدها</button>
+        <button type="button" class="btn ghost" onclick="exportDiscountCodesExcel()">خروجی اکسل همهٔ کدها</button>
+        <button type="button" class="btn ghost" onclick="printDiscountCodes()">چاپ کدهای استفاده‌نشده</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>فهرست کدها</h2></div>
+        <div class="field-row" style="align-items:end;">
+          <div class="field"><label>وضعیت</label>
+            <select id="dc-filter-status" onchange="onDiscountFilterChange()">
+              <option value="all">همه</option>
+              <option value="unused">استفاده‌نشده</option>
+              <option value="used">استفاده‌شده</option>
+              <option value="void">باطل‌شده</option>
+            </select>
+          </div>
+          <div class="field"><label>مکتب</label>
+            <select id="dc-filter-school" onchange="onDiscountFilterChange()"><option value="all">همه</option></select>
+          </div>
+          <div class="field"><label>جستجوی کد / شاگرد</label>
+            <input id="dc-search" placeholder="کد یا نام شاگرد را تایپ کنید" oninput="onDiscountFilterChange()" autocomplete="off">
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr>
+              <th>کد</th><th>تخفیف</th><th>کمیشن</th><th>مکتب / مدیر</th><th>وضعیت</th><th>استفاده‌کننده</th><th>تاریخ</th><th></th>
+            </tr></thead>
+            <tbody id="dc-table"></tbody>
+          </table>
+        </div>
+        <div id="dc-empty" style="display:none; color:var(--text-dim); text-align:center; padding:16px;">کدی با این فیلترها یافت نشد.</div>
+        <div class="pagination" id="dc-pagination"></div>
+      </div>
+    </section>
+
     <section class="view" id="view-settings">
-      
+
       <div class="panel">
         <div class="panel-head"><h2>خروجی گرفتن از داده‌ها</h2></div>
         <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">همهٔ اطلاعات (صنف‌ها، حضور و غیاب، سمینار/وبینار/کارگاه، پروندهٔ شاگردها، پرسنل، پیش‌پرداخت مدرسان، سایر درآمدها، کتاب و مطبوعات، هزینه‌ها، پروژه‌ها، جلسات هفتگی، سهامداران) در یک فایل JSON ذخیره می‌شود. این فایل را در جای امن نگه دارید.</p>
@@ -707,5 +766,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="js/seed.js"></script>
   <script src="js/app.js?v=3.2"></script>
+  <script src="js/discount-codes.js?v=1.0"></script>
 </body>
 </html>
