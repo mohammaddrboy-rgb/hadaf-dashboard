@@ -1,3 +1,71 @@
+/* ---------------- Theme & UI Management ---------------- */
+function getCurrentTheme() {
+  return document.documentElement.getAttribute('data-theme') || localStorage.getItem('hadaf_theme') || 'dark';
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  try { localStorage.setItem('hadaf_theme', theme); } catch(e) {}
+  updateThemeUI(theme);
+}
+function updateThemeUI(theme) {
+  const sun = document.getElementById('theme-icon-sun');
+  const moon = document.getElementById('theme-icon-moon');
+  const lbl = document.getElementById('theme-btn-label');
+  if (theme === 'dark') {
+    if (sun) sun.style.display = 'inline-block';
+    if (moon) moon.style.display = 'none';
+    if (lbl) lbl.textContent = 'تم روشن';
+  } else {
+    if (sun) sun.style.display = 'none';
+    if (moon) moon.style.display = 'inline-block';
+    if (lbl) lbl.textContent = 'تم تاریک';
+  }
+}
+function toggleTheme() {
+  const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+}
+
+function toggleMobileNav(force) {
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('mobile-nav-backdrop');
+  if (!sidebar) return;
+  const isOpen = force !== undefined ? force : !sidebar.classList.contains('mobile-open');
+  if (isOpen) {
+    sidebar.classList.add('mobile-open');
+    if (backdrop) backdrop.classList.add('active');
+  } else {
+    sidebar.classList.remove('mobile-open');
+    if (backdrop) backdrop.classList.remove('active');
+  }
+}
+
+function switchGateTab(role) {
+  document.querySelectorAll('.gate-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-role') === role));
+  ['shareholder', 'manager', 'teacher', 'employee'].forEach(r => {
+    const el = document.getElementById('gate-role-' + r);
+    if (el) el.style.display = (r === role ? 'block' : 'none');
+  });
+}
+
+const VIEW_TITLES = {
+  dashboard: { title: 'داشبورد', sub: 'نمای کلی وضعیت آموزشی و مالی آموزشگاه هدف' },
+  classes: { title: 'صنف‌ها', sub: 'انواع صنف‌ها، مدرس مربوطه، تاریخ آغاز و پایان و ظرفیت' },
+  seminars: { title: 'سمینار / وبینار / کارگاه', sub: 'رویدادهای علمی و تخصصی آموزشگاه هدف' },
+  students: { title: 'شاگردها', sub: 'ثبت‌نام شاگردها، وضعیت شهریه و اطلاعات تماس' },
+  attendance: { title: 'حضور و غیاب', sub: 'ثبت و پیگیری حضور و غیاب صنف‌های فعال' },
+  teachers: { title: 'پرسنل و مدرسان', sub: 'مدیریت اساتید، کارکنان و محاسبه حقوق ماهانه' },
+  donations: { title: 'سایر درآمدها', sub: 'ثبت درآمدهای متفرقه، کمک‌ها و درآمدهای جانبی' },
+  books: { title: 'کتاب و مطبوعات', sub: 'خرید کتاب، فروش کتاب و کارت شاگردی، و سود مطبوعات' },
+  expenses: { title: 'هزینه‌های روزانه', sub: 'ثبت و دسته‌بندی هزینه‌های جاری و عملیاتی' },
+  report: { title: 'گزارش جامع مالی و عملیاتی', sub: 'تحلیل دقیق سود، درآمد، مقایسه فصلی و شعبات' },
+  projects: { title: 'پروژه‌ها', sub: 'برنامه‌ها و فعالیت‌های توسعه‌ای آموزشگاه' },
+  meetings: { title: 'جلسات هفتگی', sub: 'صورت‌جلسات، تصمیم‌گیری‌ها و پیگیری امور معوق' },
+  shareholders: { title: 'سهامداران', sub: 'مدیریت سهامداران و فرمول تقسیم سود مؤسسه' },
+  activityLog: { title: 'گزارش فعالیت‌ها', sub: 'تاریخچه و لاگ تغییرات اطلاعات سیستم' },
+  settings: { title: 'تنظیمات سامانه', sub: 'پشتیبان‌گیری، بازگردانی و تنظیمات تخفیف' }
+};
+
 /* ---------------- Storage ---------------- */
 const STORE_KEY = 'hadaf_dashboard_v1';
 let db = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
@@ -202,7 +270,7 @@ function j2gISO(jy, jm, jd){
   return `${gy}-${pad(gm)}-${pad(gd)}`;
 }
 function toJalali(gregStr){
-  if(!gregStr) return '—';
+  if(!gregStr) return '-';
   const [jy,jm,jd] = g2jParts(gregStr);
   return `${faDigits(jd)} ${AFG_MONTHS[jm-1]} ${faDigits(jy)}`;
 }
@@ -287,7 +355,7 @@ function readImageAsDataURL(inputEl, onDone){
   reader.readAsDataURL(file);
 }
 
-/* ---------------- Access control (client-side gate — see settings note) ---------------- */
+/* ---------------- Access control (client-side gate · see settings note) ---------------- */
 const ROLE_LABELS = { shareholder:'سهامدار', manager:'مدیر شعبه', teacher:'مدرس', employee:'کارمند' };
 let currentRole = sessionStorage.getItem('hadaf_role') || '';
 let currentTeacherId = sessionStorage.getItem('hadaf_teacher_id') || '';
@@ -303,8 +371,14 @@ function applyRoleVisibility(){
   document.querySelectorAll('.navbtn').forEach(b=>{
     b.style.display = navAllowed(b.dataset.view) ? '' : 'none';
   });
+  document.querySelectorAll('.nav-group').forEach(grp=>{
+    const visibleButtons = Array.from(grp.querySelectorAll('.navbtn')).some(b=>b.style.display !== 'none');
+    grp.style.display = visibleButtons ? '' : 'none';
+  });
   const badge = document.getElementById('role-badge');
-  if(badge) badge.textContent = currentRole ? `${ROLE_LABELS[currentRole]} — ${currentActorName}` : '';
+  if(badge) badge.textContent = currentRole ? `${ROLE_LABELS[currentRole]} · ${currentActorName}` : 'وارد نشده';
+  const sideRole = document.getElementById('sidebar-role-text');
+  if(sideRole) sideRole.textContent = currentRole ? `${ROLE_LABELS[currentRole]} · ${currentActorName}` : 'ورود نشده';
 }
 function showAccessGate(){
   document.getElementById('access-gate').classList.add('active');
@@ -361,13 +435,13 @@ function attemptLogin(role){
   currentActorName = actorName;
   sessionStorage.setItem('hadaf_role', role);
   sessionStorage.setItem('hadaf_actor_name', actorName);
-  logAction('ورود', 'نشست', `${ROLE_LABELS[role]} — ${actorName}`);
+  logAction('ورود', 'نشست', `${ROLE_LABELS[role]} · ${actorName}`);
   hideAccessGate();
   applyRoleVisibility();
   switchView(role==='teacher' ? 'classes' : role==='employee' ? 'students' : 'dashboard');
 }
 function logoutRole(){
-  if(currentRole) logAction('خروج', 'نشست', `${ROLE_LABELS[currentRole]} — ${currentActorName}`);
+  if(currentRole) logAction('خروج', 'نشست', `${ROLE_LABELS[currentRole]} · ${currentActorName}`);
   sessionStorage.removeItem('hadaf_role'); sessionStorage.removeItem('hadaf_teacher_id'); sessionStorage.removeItem('hadaf_actor_name');
   currentRole=''; currentTeacherId=''; currentActorName='';
   showAccessGate();
@@ -377,8 +451,8 @@ function renderGateAllPasswords(){
   const box = document.getElementById('gate-all-passwords');
   if(!box) return;
   const rows = [
-    ...db.shareholders.map(sh=>`${sh.name} — سهامدار (${sh.code}): <b class="code-badge" style="cursor:default;">${sh.password||'—'}</b>`),
-    ...db.teachers.map(t=>`${t.name} — ${t.role||'مدرس'} (${t.code||'—'}): <b class="code-badge" style="cursor:default;">${t.password||'—'}</b>`),
+    ...db.shareholders.map(sh=>`${sh.name} · سهامدار (${sh.code}): <b class="code-badge" style="cursor:default;">${sh.password||'-'}</b>`),
+    ...db.teachers.map(t=>`${t.name} · ${t.role||'مدرس'} (${t.code||'-'}): <b class="code-badge" style="cursor:default;">${t.password||'-'}</b>`),
   ];
   box.innerHTML = rows.length ? rows.join('<br>') : 'هنوز کسی ثبت نشده است.';
 }
@@ -409,6 +483,14 @@ function switchView(name){
   if(attendanceDirty && name!=='attendance') commitAttendanceSave(true);
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
+  
+  const meta = VIEW_TITLES[name];
+  const hTitle = document.getElementById('header-view-title');
+  const hSub = document.getElementById('header-view-sub');
+  if (hTitle && meta) hTitle.textContent = meta.title;
+  if (hSub && meta) hSub.textContent = meta.sub;
+  if (typeof toggleMobileNav === 'function') toggleMobileNav(false);
+
   if(name==='classes') renderClasses();
   if(name==='attendance') renderAttendanceClassOptions();
 }
@@ -474,7 +556,7 @@ function downloadWorkbookFromRows(rowsByCategory, filenamePrefix){
   if(typeof XLSX==='undefined'){ alert('کتابخانهٔ اکسل بارگذاری نشد. اتصال اینترنت را بررسی کنید.'); return; }
   const wb = XLSX.utils.book_new();
   Object.entries(rowsByCategory).forEach(([name, rows])=>{
-    const ws = XLSX.utils.json_to_sheet(rows && rows.length ? rows : [{'—':'داده‌ای موجود نیست'}]);
+    const ws = XLSX.utils.json_to_sheet(rows && rows.length ? rows : [{'-':'داده‌ای موجود نیست'}]);
     XLSX.utils.book_append_sheet(wb, ws, name.slice(0,31));
   });
   XLSX.writeFile(wb, `${filenamePrefix}-${todayISO()}.xlsx`);
@@ -509,7 +591,7 @@ function teachersToRows(list){
     return { 'کد': t.code||'', 'نام': t.name, 'نقش': t.role||'', 'شماره تماس': t.phone||'', 'مضامین': t.subjects||'',
       'آغاز قرارداد': t.contractStart?toJalali(t.contractStart):'', 'پایان قرارداد': t.contractEnd?toJalali(t.contractEnd):'نامشخص',
       'نوع پرداخت': t.payType||'', 'مبلغ (افغانی)': t.payAmount||0,
-      'تعداد صنف‌ها': classes.length, 'صنف‌های تدریسی': classes.map(c=>c.name||c.category).join('، ')||'—',
+      'تعداد صنف‌ها': classes.length, 'صنف‌های تدریسی': classes.map(c=>c.name||c.category).join('، ')||'-',
       'صنف‌های این ماه': t.payType==='ماهانه ثابت' ? '' : teacherClassCountInMonth(t.id,y,m),
       'حقوق ناخالص این ماه (افغانی)': teacherGrossSalary(t,y,m), 'مانده پیش‌پرداخت (افغانی)': teacherAdvanceBalance(t.id),
       'خالص قابل پرداخت این ماه (افغانی)': teacherNetSalary(t,y,m),
@@ -595,7 +677,7 @@ function openProgressModal(entityType, id){
   if(!item.progressLog) item.progressLog = [];
   const label = entityType==='class' ? (item.name||item.category) : item.name;
   openModal(`
-    <h3>پیشرفت — ${label}</h3>
+    <h3>پیشرفت · ${label}</h3>
     <div class="field">
       <label>درصد پیشرفت فعلی: <b style="color:var(--gold-soft);">${faDigits(item.progress||0)}٪</b></label>
       <input id="f-prog-pct" type="range" min="0" max="100" step="5" value="${item.progress||0}" style="width:100%;" oninput="document.getElementById('f-prog-pct-label').textContent=faDigits(this.value)+'٪'">
@@ -609,7 +691,7 @@ function openProgressModal(entityType, id){
     </div>
     <div class="sectiontitle">تاریخچهٔ پیشرفت</div>
     <div id="prog-log-list">
-      ${item.progressLog.length ? item.progressLog.map(l=>`<div class="log-item"><div class="log-date">${toJalali(l.date)} — ${faDigits(l.pct)}٪</div>${l.note||''}</div>`).join('') : '<div class="empty">هنوز یادداشتی ثبت نشده.</div>'}
+      ${item.progressLog.length ? item.progressLog.map(l=>`<div class="log-item"><div class="log-date">${toJalali(l.date)} · ${faDigits(l.pct)}٪</div>${l.note||''}</div>`).join('') : '<div class="empty">هنوز یادداشتی ثبت نشده.</div>'}
     </div>
   `);
 }
@@ -639,7 +721,7 @@ function formatTimeAmPm(t){
   return `${faDigits(h12)}:${faDigits(String(m).padStart(2,'0'))} ${period}`;
 }
 function classTimeLabel(c){
-  if(!c.startTime && !c.endTime) return '—';
+  if(!c.startTime && !c.endTime) return '-';
   if(c.startTime && c.endTime) return `${formatTimeAmPm(c.startTime)} تا ${formatTimeAmPm(c.endTime)}`;
   return formatTimeAmPm(c.startTime||c.endTime);
 }
@@ -654,15 +736,15 @@ function classStatusTagClass(st){
   if(st==='آینده') return 'info';
   return 'income';
 }
-function teacherName(id){ const t = db.teachers.find(x=>x.id===id); return t?t.name:'—'; }
+function teacherName(id){ const t = db.teachers.find(x=>x.id===id); return t?t.name:'-'; }
 function teacherClassesList(id){ return db.classes.filter(c=>c.teacherId===id); }
-function className(id){ const c = db.classes.find(x=>x.id===id); return c?(c.name||c.category):'—'; }
-function classBranch(id){ const c = db.classes.find(x=>x.id===id); return c?(c.branch||'—'):'—'; }
+function className(id){ const c = db.classes.find(x=>x.id===id); return c?(c.name||c.category):'-'; }
+function classBranch(id){ const c = db.classes.find(x=>x.id===id); return c?(c.branch||'-'):'-'; }
 
 /* ---------------- Student profile helpers ---------------- */
 function profileById(id){ return db.studentProfiles.find(x=>x.id===id); }
 function profileName(id){ const p = profileById(id); return p ? p.name : 'بدون‌نام'; }
-function profileCode(id){ const p = profileById(id); return p ? p.code : '—'; }
+function profileCode(id){ const p = profileById(id); return p ? p.code : '-'; }
 function profileGrade(id){ const p = profileById(id); return p ? (p.grade||'') : ''; }
 function profileGuardianName(id){ const p = profileById(id); return p ? (p.guardianName||'') : ''; }
 function profileGuardianPhone(id){ const p = profileById(id); return p ? (p.guardianPhone||'') : ''; }
@@ -702,13 +784,13 @@ function studentStatusTagClass(st){
 
 /* ---------------- CLASS modal ---------------- */
 function classOptionsHtml(selectedId){
-  if(!db.classes.length) return '<option value="">— ابتدا یک صنف بسازید —</option>';
-  return '<option value="">— انتخاب کنید —</option>' + db.classes.map(c=>
-    `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name||c.category} — ${c.branch||'—'}${c.startTime?' — '+classTimeLabel(c):''} (${classStatus(c)})</option>`
+  if(!db.classes.length) return '<option value="">ابتدا یک صنف بسازید</option>';
+  return '<option value="">انتخاب کنید</option>' + db.classes.map(c=>
+    `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name||c.category} · ${c.branch||'-'}${c.startTime?' · '+classTimeLabel(c):''} (${classStatus(c)})</option>`
   ).join('');
 }
 function teacherOptionsHtml(selectedId){
-  return '<option value="">— بدون مدرس مشخص —</option>' + db.teachers.map(t=>
+  return '<option value="">بدون مدرس مشخص</option>' + db.teachers.map(t=>
     `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${t.name}</option>`
   ).join('');
 }
@@ -923,15 +1005,15 @@ function openStudentModal(id){
     <div class="sectiontitle">مشخصات شاگرد</div>
     ${s ? `
       <div class="field"><label>شاگرد</label>
-        <input disabled value="${p?p.code+' — '+p.name:'—'}" style="opacity:.75;">
+        <input disabled value="${p?p.code+' · '+p.name:'-'}" style="opacity:.75;">
       </div>
       <p class="hint" style="margin:-4px 0 12px; font-size:11px; color:var(--text-faint);">برای ویرایش مشخصات این شاگرد، روی کد او در جدول کلیک کنید و از صفحهٔ پروندهٔ او اقدام نمایید.</p>
     ` : `
       <div class="field">
-        <label>جستجوی شاگرد موجود (اختیاری — برای ثبت‌نام در صنف جدید)</label>
+        <label>جستجوی شاگرد موجود (اختیاری · برای ثبت‌نام در صنف جدید)</label>
         <input id="f-st-profile-search" list="dl-profiles" placeholder="کد یا نام را تایپ کنید، یا برای شاگرد جدید خالی بگذارید" oninput="onProfileSearchInput()">
         <datalist id="dl-profiles">
-          ${db.studentProfiles.map(pr=>`<option value="${pr.code} — ${pr.name}">`).join('')}
+          ${db.studentProfiles.map(pr=>`<option value="${pr.code} · ${pr.name}">`).join('')}
         </datalist>
       </div>
       <input type="hidden" id="f-st-profile-id" value="">
@@ -967,7 +1049,7 @@ function openStudentModal(id){
       <div class="field"><label>مبلغ شهریه (۰ برای رایگان)</label><input id="f-st-fee" class="money-input" value="${s&&s.feeAmount?numFmt(s.feeAmount):''}" oninput="formatMoneyInput(this); updateStudentCalc();" placeholder="۰"></div>
       <div class="field"><label>درصد تخفیف دستی</label><input id="f-st-discount" type="number" min="0" max="100" value="${s&&s.discountPercent?s.discountPercent:0}" oninput="updateStudentCalc()"></div>
     </div>
-    <div class="calc-box"><span>شهریهٔ نهایی (فقط تخفیف دستی — تخفیف معرفی/خانوادگی پس از ذخیره افزوده می‌شود)</span><b id="f-st-net-display">${afn(netAfterDiscount(s?s.feeAmount:0, s?s.discountPercent:0))}</b></div>
+    <div class="calc-box"><span>شهریهٔ نهایی (فقط تخفیف دستی · تخفیف معرفی/خانوادگی پس از ذخیره افزوده می‌شود)</span><b id="f-st-net-display">${afn(netAfterDiscount(s?s.feeAmount:0, s?s.discountPercent:0))}</b></div>
     <div class="field" style="margin-top:12px;"><label>مبلغ پرداخت‌شده</label><input id="f-st-paid" class="money-input" value="${s&&s.paidAmount?numFmt(s.paidAmount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     ${!s ? `
       <div class="field"><label>کد معرف (اختیاری)</label><input id="f-st-referral-code" list="dl-profiles" placeholder="کد شاگردی که این شخص را معرفی کرده">
@@ -1012,7 +1094,7 @@ function openStudentModal(id){
 }
 function onProfileSearchInput(){
   const val = (document.getElementById('f-st-profile-search').value||'').trim();
-  const match = db.studentProfiles.find(pr=>`${pr.code} — ${pr.name}`===val);
+  const match = db.studentProfiles.find(pr=>`${pr.code} · ${pr.name}`===val);
   const idEl = document.getElementById('f-st-profile-id');
   const nameEl = document.getElementById('f-st-name');
   const gradeEl = document.getElementById('f-st-grade');
@@ -1087,14 +1169,14 @@ function saveStudent(id){
     const refInput = document.getElementById('f-st-referral-code');
     const refVal = refInput ? refInput.value.trim() : '';
     if(refVal){
-      const match = db.studentProfiles.find(pr=>`${pr.code} — ${pr.name}`===refVal || pr.code===refVal);
+      const match = db.studentProfiles.find(pr=>`${pr.code} · ${pr.name}`===refVal || pr.code===refVal);
       if(match && match.id!==profileId){
         rec.referredBy = match.id;
         rec.referralDiscountPercent = db.referralSettings.refereeDiscount;
         const refEnrollments = profileEnrollments(match.id).sort((a,b)=> b.registerDate.localeCompare(a.registerDate));
         if(refEnrollments[0]){
           refEnrollments[0].referralDiscountPercent = (Number(refEnrollments[0].referralDiscountPercent)||0) + db.referralSettings.referrerDiscount;
-          logAction('تخفیف معرفی', 'ثبت‌نام شاگرد', `${profileName(refEnrollments[0].profileId)} — پاداش ${faDigits(db.referralSettings.referrerDiscount)}٪ برای معرفی ${profileName(profileId)}`);
+          logAction('تخفیف معرفی', 'ثبت‌نام شاگرد', `${profileName(refEnrollments[0].profileId)} · پاداش ${faDigits(db.referralSettings.referrerDiscount)}٪ برای معرفی ${profileName(profileId)}`);
         }
       }
     }
@@ -1107,10 +1189,10 @@ function saveStudent(id){
 
   if(id){ const idx = db.students.findIndex(x=>x.id===id); db.students[idx]=rec; }
   else { db.students.unshift(rec); }
-  logAction(id?'ویرایش':'ثبت‌نام', 'ثبت‌نام شاگرد', `${profileName(profileId)} — ${className(rec.classId)}`);
+  logAction(id?'ویرایش':'ثبت‌نام', 'ثبت‌نام شاگرد', `${profileName(profileId)} · ${className(rec.classId)}`);
   closeModal(); save();
 }
-function deleteStudent(id){ if(!confirm('این ثبت‌نام حذف شود؟ (پروندهٔ شاگرد و ثبت‌نامی‌های دیگر او حذف نخواهد شد)')) return; const it=db.students.find(x=>x.id===id); const lbl=it?`${profileName(it.profileId)} — ${className(it.classId)}`:''; db.students = db.students.filter(x=>x.id!==id); logAction('حذف','ثبت‌نام شاگرد',lbl); save(); }
+function deleteStudent(id){ if(!confirm('این ثبت‌نام حذف شود؟ (پروندهٔ شاگرد و ثبت‌نامی‌های دیگر او حذف نخواهد شد)')) return; const it=db.students.find(x=>x.id===id); const lbl=it?`${profileName(it.profileId)} · ${className(it.classId)}`:''; db.students = db.students.filter(x=>x.id!==id); logAction('حذف','ثبت‌نام شاگرد',lbl); save(); }
 
 /* ---------------- Student profile modal ---------------- */
 function openStudentProfileModal(profileId){
@@ -1125,10 +1207,10 @@ function openStudentProfileModal(profileId){
       <td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${faDigits(studentTotalDiscountPercent(s))}٪</td>
       <td class="num">${afn(studentNetFee(s))}</td><td class="num">${afn(studentRemaining(s))}</td>
       <td class="num">${faDigits(att.present)}</td><td class="num">${faDigits(att.absent)}</td>
-      <td class="num">${s.activityScore!==''&&s.activityScore!==undefined?faDigits(s.activityScore):'—'}</td>
-      <td class="num">${s.examScore!==''&&s.examScore!==undefined?faDigits(s.examScore):'—'}</td>
-      <td>${s.bookTitle?`${s.bookTitle} <span class="tag ${s.bookPaid?'income':'cost'}" style="margin-right:4px;">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'—'}</td>
-      <td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'—'}</td>
+      <td class="num">${s.activityScore!==''&&s.activityScore!==undefined?faDigits(s.activityScore):'-'}</td>
+      <td class="num">${s.examScore!==''&&s.examScore!==undefined?faDigits(s.examScore):'-'}</td>
+      <td>${s.bookTitle?`${s.bookTitle} <span class="tag ${s.bookPaid?'income':'cost'}" style="margin-right:4px;">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
+      <td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${s.result ? `<span class="tag ${resultTagClass(s.result)}">${s.result}</span>` : '<span class="tag info">در حال آموزش</span>'}</td>
     </tr>
   `;
@@ -1144,7 +1226,7 @@ function openStudentProfileModal(profileId){
 
   openModal(`
     <h3>پروندهٔ شاگرد</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${p.code||'—'}</span></p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${p.code||'-'}</span></p>
     ${referralInfo}
     <div class="profile-grid">
       <div class="upload-box">
@@ -1202,7 +1284,7 @@ function openTeacherModal(id){
   const t = id ? db.teachers.find(x=>x.id===id) : null;
   openModal(`
     <h3>${t?'ویرایش پرسنل':'پرسنل جدید'}</h3>
-    ${t?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'—'}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
+    ${t?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'-'}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
     <div class="field-row">
       <div class="field"><label>نام</label><input id="f-t-name" value="${t?t.name:''}"></div>
       <div class="field"><label>نقش</label><select id="f-t-role">${personnelRoleOptionsHtml(t?t.role:'مدرس')}</select></div>
@@ -1296,7 +1378,7 @@ function openTeacherProfileModal(teacherId){
     const fail = enrolled.filter(s=>s.result==='ناکام').length;
     const att = classAttendanceTotals(c.id);
     return `<tr>
-      <td>${c.name||c.category}</td><td>${c.branch||'—'}</td><td>${toJalali(c.startDate)}</td>
+      <td>${c.name||c.category}</td><td>${c.branch||'-'}</td><td>${toJalali(c.startDate)}</td>
       <td><span class="tag ${classStatusTagClass(classStatus(c))}">${classStatus(c)}</span></td>
       <td class="num">${faDigits(enrolled.length)}</td>
       <td class="num">${faDigits(pass)}</td><td class="num">${faDigits(fail)}</td>
@@ -1309,7 +1391,7 @@ function openTeacherProfileModal(teacherId){
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <span style="font-size:12.5px; color:var(--text-dim);">رمز عبور ورود این شخص (نقش مدرس/مدیر شعبه):</span>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="code-badge" style="cursor:default;">${t.password||'—'}</span>
+          <span class="code-badge" style="cursor:default;">${t.password||'-'}</span>
           <button class="btn ghost small" onclick="regeneratePersonnelPassword('${t.id}')">تولید رمز جدید</button>
         </div>
       </div>
@@ -1318,7 +1400,7 @@ function openTeacherProfileModal(teacherId){
 
   openModal(`
     <h3>پروندهٔ پرسنل</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'—'}</span> · نقش: ${t.role||'مدرس'}</p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'-'}</span> · نقش: ${t.role||'مدرس'}</p>
     ${passwordBlock}
     <div class="profile-grid">
       <div class="upload-box">
@@ -1333,9 +1415,9 @@ function openTeacherProfileModal(teacherId){
       </div>
     </div>
     <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:16px;">
-      <div class="card c-info"><div class="label">تاریخ آغاز قرارداد</div><div class="value info" style="font-size:14px;">${t.contractStart?toJalali(t.contractStart):'—'}</div></div>
+      <div class="card c-info"><div class="label">تاریخ آغاز قرارداد</div><div class="value info" style="font-size:14px;">${t.contractStart?toJalali(t.contractStart):'-'}</div></div>
       <div class="card c-info"><div class="label">تاریخ پایان قرارداد</div><div class="value info" style="font-size:14px;">${t.contractEnd?toJalali(t.contractEnd):'نامشخص'}</div></div>
-      <div class="card c-income"><div class="label">نرخ کامیابی شاگردها</div><div class="value income" style="font-size:14px;">${stats.rate===null?'—':faDigits(stats.rate)+'٪ ('+faDigits(stats.pass)+'/'+faDigits(stats.total)+')'}</div></div>
+      <div class="card c-income"><div class="label">نرخ کامیابی شاگردها</div><div class="value income" style="font-size:14px;">${stats.rate===null?'-':faDigits(stats.rate)+'٪ ('+faDigits(stats.pass)+'/'+faDigits(stats.total)+')'}</div></div>
     </div>
 
     <div class="sectiontitle">سابقهٔ صنف‌های تدریس‌شده</div>
@@ -1405,10 +1487,10 @@ function saveAdvance(id){
   };
   if(id){ const idx = db.teacherAdvances.findIndex(x=>x.id===id); db.teacherAdvances[idx]=rec; }
   else { db.teacherAdvances.unshift(rec); }
-  logAction(id?'ویرایش':'ایجاد', 'پیش‌پرداخت مدرس', `${teacherName(rec.teacherId)} — ${afn(rec.amount)}`);
+  logAction(id?'ویرایش':'ایجاد', 'پیش‌پرداخت مدرس', `${teacherName(rec.teacherId)} · ${afn(rec.amount)}`);
   closeModal(); save();
 }
-function deleteAdvance(id){ if(!confirm('این پیش‌پرداخت حذف شود؟')) return; const it=db.teacherAdvances.find(x=>x.id===id); const lbl=it?`${teacherName(it.teacherId)} — ${afn(it.amount)}`:''; db.teacherAdvances = db.teacherAdvances.filter(x=>x.id!==id); logAction('حذف','پیش‌پرداخت مدرس',lbl); save(); }
+function deleteAdvance(id){ if(!confirm('این پیش‌پرداخت حذف شود؟')) return; const it=db.teacherAdvances.find(x=>x.id===id); const lbl=it?`${teacherName(it.teacherId)} · ${afn(it.amount)}`:''; db.teacherAdvances = db.teacherAdvances.filter(x=>x.id!==id); logAction('حذف','پیش‌پرداخت مدرس',lbl); save(); }
 function toggleAdvanceSettled(id, checked){
   const a = db.teacherAdvances.find(x=>x.id===id); if(!a) return;
   a.settled = checked; save();
@@ -1425,10 +1507,10 @@ function paySalary(teacherId){
   if(!confirm(`حقوق خالص ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
   db.expenses.unshift({
     id: uid(), branch: BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
-    note: `حقوق ${t.name} — ${toJalali(todayISO())}`,
+    note: `حقوق ${t.name} · ${toJalali(todayISO())}`,
   });
   db.teacherAdvances.forEach(a=>{ if(a.teacherId===teacherId && !a.settled) a.settled = true; });
-  logAction('پرداخت حقوق', 'پرسنل', `${t.name} — خالص ${afn(net)}`);
+  logAction('پرداخت حقوق', 'پرسنل', `${t.name} · خالص ${afn(net)}`);
   save();
 }
 
@@ -1437,7 +1519,7 @@ function openDonationModal(id){
   const d = id ? db.donations.find(x=>x.id===id) : null;
   openModal(`
     <h3>${d?'ویرایش درآمد':'درآمد جدید'}</h3>
-    <p class="hint" style="margin-top:-6px;">توجه: درآمد فروش کتاب و کارت شاگردی اینجا ثبت نشود — آن‌ها به‌صورت خودکار از صفحهٔ «کتاب و مطبوعات» محاسبه می‌شوند.</p>
+    <p class="hint" style="margin-top:-6px;">توجه: درآمد فروش کتاب و کارت شاگردی اینجا ثبت نشود · آن‌ها به‌صورت خودکار از صفحهٔ «کتاب و مطبوعات» محاسبه می‌شوند.</p>
     <div class="field"><label>نام منبع درآمد (اختیاری)</label><input id="f-d-donor" value="${d?d.donorName||'':''}" placeholder="سایر"></div>
     <div class="field-row">
       <div class="field"><label>مبلغ</label><input id="f-d-amount" class="money-input" value="${d&&d.amount?numFmt(d.amount):''}" oninput="formatMoneyInput(this); updateDonationCalc();"></div>
@@ -1471,7 +1553,7 @@ function saveDonation(id){
   };
   if(id){ const idx = db.donations.findIndex(x=>x.id===id); db.donations[idx]=rec; }
   else { db.donations.unshift(rec); }
-  logAction(id?'ویرایش':'ایجاد', 'سایر درآمدها', `${rec.donorName} — ${afn(rec.amount)}`);
+  logAction(id?'ویرایش':'ایجاد', 'سایر درآمدها', `${rec.donorName} · ${afn(rec.amount)}`);
   closeModal(); save();
 }
 function donationNetAmount(d){ return netAfterDiscount(d.amount, d.discountPercent); }
@@ -1506,17 +1588,17 @@ function saveExpense(id){
   };
   if(id){ const idx = db.expenses.findIndex(x=>x.id===id); db.expenses[idx]=rec; }
   else { db.expenses.unshift(rec); }
-  logAction(id?'ویرایش':'ایجاد', 'هزینه', `${rec.category} — ${afn(rec.amount)}`);
+  logAction(id?'ویرایش':'ایجاد', 'هزینه', `${rec.category} · ${afn(rec.amount)}`);
   closeModal(); save();
 }
-function deleteExpense(id){ if(!confirm('این هزینه حذف شود؟')) return; const it=db.expenses.find(x=>x.id===id); const lbl=it?`${it.category} — ${afn(it.amount)}`:''; db.expenses = db.expenses.filter(x=>x.id!==id); logAction('حذف','هزینه',lbl); save(); }
+function deleteExpense(id){ if(!confirm('این هزینه حذف شود؟')) return; const it=db.expenses.find(x=>x.id===id); const lbl=it?`${it.category} · ${afn(it.amount)}`:''; db.expenses = db.expenses.filter(x=>x.id!==id); logAction('حذف','هزینه',lbl); save(); }
 
 /* ---------------- PROJECT modal ---------------- */
 function openProjectModal(id){
   const p = id ? db.projects.find(x=>x.id===id) : null;
   openModal(`
     <h3>${p?'ویرایش پروژه':'پروژهٔ جدید'}</h3>
-    <p class="sub">فعالیت یا برنامهٔ بزرگ‌تر آموزشگاه را ثبت کنید — پیشرفت آن از خودِ لیست پروژه‌ها قابل ثبت است</p>
+    <p class="sub">فعالیت یا برنامهٔ بزرگ‌تر آموزشگاه را ثبت کنید · پیشرفت آن از خودِ لیست پروژه‌ها قابل ثبت است</p>
     <div class="field-row">
       <div class="field"><label>نام پروژه</label><input id="f-pr-name" value="${p?p.name:''}"></div>
       <div class="field"><label>دسته</label><select id="f-pr-category">${categoryOptionsHtml(PROJECT_CATEGORIES, p?p.category:PROJECT_CATEGORIES[0])}</select></div>
@@ -1646,7 +1728,7 @@ function renderDashboard(){
   const { pageItems: unpaid, totalPages: unpaidPages } = paginateList('dash-unpaid', unpaidAll);
   document.getElementById('dash-unpaid-empty').style.display = unpaidAll.length? 'none':'block';
   document.getElementById('dash-unpaid').innerHTML = unpaid.map(s=>`
-    <tr><td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${profileGuardianName(s.profileId)||'—'} ${profileGuardianPhone(s.profileId)?'· '+profileGuardianPhone(s.profileId):''}</td>
+    <tr><td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${profileGuardianName(s.profileId)||'-'} ${profileGuardianPhone(s.profileId)?'· '+profileGuardianPhone(s.profileId):''}</td>
     <td class="num"><span class="tag cost">${afn(studentRemaining(s))}</span></td></tr>
   `).join('');
   renderPaginationControls('dash-unpaid-pagination', 'dash-unpaid', unpaidPages, 'renderDashboard');
@@ -1691,10 +1773,10 @@ function renderClasses(){
     const st = classStatus(c);
     const enrolled = classEnrolledCount(c.id);
     return `<tr>
-      <td>${c.name||'—'}</td><td>${c.branch||'—'}</td><td>${c.category}</td><td>${teacherName(c.teacherId)}</td><td>${c.mode||'—'}</td>
+      <td>${c.name||'-'}</td><td>${c.branch||'-'}</td><td>${c.category}</td><td>${teacherName(c.teacherId)}</td><td>${c.mode||'-'}</td>
       <td style="white-space:nowrap;">${classTimeLabel(c)}</td>
       <td>${toJalali(c.startDate)}</td><td>${c.endDate?toJalali(c.endDate):'نامشخص'}</td>
-      <td class="num">${c.capacity?faDigits(c.capacity):'—'}</td>
+      <td class="num">${c.capacity?faDigits(c.capacity):'-'}</td>
       <td class="num">${faDigits(enrolled)}</td>
       <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td>
       <td>${progressBarHtml(c.progress||0)}</td>
@@ -1714,7 +1796,7 @@ function renderProjects(){
   document.getElementById('projects-table').innerHTML = db.projects.map(p=>{
     const st = classStatus(p);
     return `<tr>
-      <td>${p.name}</td><td>${p.category}</td><td>${p.lead||'—'}</td>
+      <td>${p.name}</td><td>${p.category}</td><td>${p.lead||'-'}</td>
       <td>${toJalali(p.startDate)}</td><td>${p.endDate?toJalali(p.endDate):'نامشخص'}</td>
       <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td>
       <td>${progressBarHtml(p.progress||0)}</td>
@@ -1733,9 +1815,9 @@ function renderMeetings(){
   document.getElementById('meetings-table').innerHTML = db.meetings.map(m=>{
     const tasks = m.tasks||[];
     const done = tasks.filter(t=>t.done).length;
-    const notesPreview = (m.notes||'').length>70 ? (m.notes||'').slice(0,70)+'…' : (m.notes||'—');
+    const notesPreview = (m.notes||'').length>70 ? (m.notes||'').slice(0,70)+'…' : (m.notes||'-');
     return `<tr>
-      <td>${toJalali(m.date)}</td><td>${m.attendees||'—'}</td><td>${notesPreview}</td>
+      <td>${toJalali(m.date)}</td><td>${m.attendees||'-'}</td><td>${notesPreview}</td>
       <td class="num">${faDigits(done)}/${faDigits(tasks.length)}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openMeetingModal('${m.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
@@ -1749,7 +1831,7 @@ function renderMeetings(){
   document.getElementById('open-tasks-empty').style.display = openTasks.length? 'none':'block';
   document.getElementById('open-tasks-table').innerHTML = openTasks.map(t=>`
     <tr>
-      <td>${t.text}</td><td>${t.assignee||'—'}</td><td>${toJalali(t.meetingDate)}</td>
+      <td>${t.text}</td><td>${t.assignee||'-'}</td><td>${toJalali(t.meetingDate)}</td>
       <td><label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="checkbox" style="width:auto;" onchange="toggleOpenTask('${t.meetingId}','${t.id}',this.checked)"> انجام شد
       </label></td>
@@ -1789,9 +1871,9 @@ function renderStudents(){
     const st = studentStatus(s);
     return `<tr>
       <td><span class="code-badge" onclick="openStudentProfileModal('${s.profileId}')">${profileCode(s.profileId)}</span></td>
-      <td>${profileName(s.profileId)}</td><td>${profileGrade(s.profileId)||'—'}</td><td>${profileGuardianName(s.profileId)||'—'}</td><td>${profileGuardianPhone(s.profileId)||'—'}</td>
+      <td>${profileName(s.profileId)}</td><td>${profileGrade(s.profileId)||'-'}</td><td>${profileGuardianName(s.profileId)||'-'}</td><td>${profileGuardianPhone(s.profileId)||'-'}</td>
       <td>${className(s.classId)}</td><td>${classBranch(s.classId)}</td><td>${toJalali(s.registerDate)}</td>
-      <td class="num">${afn(s.feeAmount)}</td><td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${studentTotalDiscountPercent(s)?faDigits(studentTotalDiscountPercent(s))+'٪':'—'}</td><td class="num">${afn(s.paidAmount)}</td>
+      <td class="num">${afn(s.feeAmount)}</td><td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${studentTotalDiscountPercent(s)?faDigits(studentTotalDiscountPercent(s))+'٪':'-'}</td><td class="num">${afn(s.paidAmount)}</td>
       <td class="num">${afn(studentRemaining(s))}</td>
       <td><span class="tag ${studentStatusTagClass(st)}">${st}</span></td>
       <td>${s.result?`<span class="tag ${resultTagClass(s.result)}">${s.result}</span>`:'<span class="tag info">در حال آموزش</span>'}</td>
@@ -1810,11 +1892,11 @@ function renderTeachers(){
   const { pageItems, totalPages } = paginateList('teachers', db.teachers);
   document.getElementById('teachers-table').innerHTML = pageItems.map(t=>{
     const classes = teacherClassesList(t.id);
-    const names = classes.map(c=>c.name||c.category).join('، ') || '—';
-    const payLabel = t.payAmount ? `${afn(t.payAmount)} <span style="color:var(--text-faint);">(${t.payType||'—'})</span>` : '—';
+    const names = classes.map(c=>c.name||c.category).join('، ') || '-';
+    const payLabel = t.payAmount ? `${afn(t.payAmount)} <span style="color:var(--text-faint);">(${t.payType||'-'})</span>` : '-';
     return `<tr>
-      <td><span class="code-badge" onclick="openTeacherProfileModal('${t.id}')">${t.code||'—'}</span></td>
-      <td>${t.name}</td><td><span class="tag info">${t.role||'مدرس'}</span></td><td>${t.phone||'—'}</td><td>${t.subjects||'—'}</td><td class="num">${payLabel}</td>
+      <td><span class="code-badge" onclick="openTeacherProfileModal('${t.id}')">${t.code||'-'}</span></td>
+      <td>${t.name}</td><td><span class="tag info">${t.role||'مدرس'}</span></td><td>${t.phone||'-'}</td><td>${t.subjects||'-'}</td><td class="num">${payLabel}</td>
       <td class="num">${faDigits(classes.length)}</td><td>${names}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openTeacherModal('${t.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
@@ -1832,13 +1914,13 @@ function renderTeacherAdvances(){
 
   document.getElementById('payroll-empty').style.display = db.teachers.length? 'none':'block';
   document.getElementById('payroll-table').innerHTML = db.teachers.map(t=>{
-    const cnt = t.payType==='ماهانه ثابت' ? '—' : faDigits(teacherClassCountInMonth(t.id, y, m));
+    const cnt = t.payType==='ماهانه ثابت' ? '-' : faDigits(teacherClassCountInMonth(t.id, y, m));
     const gross = teacherGrossSalary(t, y, m);
     const advBal = teacherAdvanceBalance(t.id);
     const net = teacherNetSalary(t, y, m);
     return `<tr>
-      <td>${t.name}</td><td>${t.payType||'—'}</td><td class="num">${cnt}</td>
-      <td class="num">${afn(gross)}</td><td class="num">${advBal?afn(advBal):'—'}</td>
+      <td>${t.name}</td><td>${t.payType||'-'}</td><td class="num">${cnt}</td>
+      <td class="num">${afn(gross)}</td><td class="num">${advBal?afn(advBal):'-'}</td>
       <td class="num"><b style="color:var(--gold-soft);">${afn(net)}</b></td>
       <td><button class="btn ghost small" onclick="paySalary('${t.id}')">ثبت پرداخت</button></td>
     </tr>`;
@@ -1852,7 +1934,7 @@ function renderTeacherAdvances(){
         <input type="checkbox" style="width:auto;" ${a.settled?'checked':''} onchange="toggleAdvanceSettled('${a.id}',this.checked)">
         <span class="tag ${a.settled?'income':'cost'}">${a.settled?'تسویه‌شده':'باز'}</span>
       </label></td>
-      <td>${a.note||'—'}</td>
+      <td>${a.note||'-'}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openAdvanceModal('${a.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteAdvance('${a.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
@@ -1868,12 +1950,12 @@ function renderSeminars(){
     const netFee = seminarNetFee(s);
     const feeCell = s.isPaid
       ? (s.discountPercent>0 ? `${afn(netFee)} <span style="color:var(--text-faint); text-decoration:line-through;">${afn(s.fee)}</span>` : afn(netFee))
-      : '—';
+      : '-';
     return `<tr>
-      <td>${s.title}</td><td>${s.type}</td><td>${s.location||'—'}</td><td>${teacherName(s.speakerId)}</td>
+      <td>${s.title}</td><td>${s.type}</td><td>${s.location||'-'}</td><td>${teacherName(s.speakerId)}</td>
       <td>${toJalali(s.date)}</td><td><span class="tag ${s.isPaid?'cost':'income'}">${s.isPaid?'پولی':'رایگان'}</span></td>
-      <td class="num">${feeCell}</td><td class="num">${s.attendeeCount?faDigits(s.attendeeCount):'—'}</td>
-      <td class="num">${s.isPaid?afn(seminarRevenue(s)):'—'}</td>
+      <td class="num">${feeCell}</td><td class="num">${s.attendeeCount?faDigits(s.attendeeCount):'-'}</td>
+      <td class="num">${s.isPaid?afn(seminarRevenue(s)):'-'}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openSeminarModal('${s.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteSeminar('${s.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
@@ -1888,7 +1970,7 @@ function renderDonations(){
   const { pageItems, totalPages } = paginateList('donations', db.donations);
   document.getElementById('donations-table').innerHTML = pageItems.map(d=>`
     <tr>
-      <td>${d.donorName}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${d.method}</td><td>${d.note||'—'}</td>
+      <td>${d.donorName}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${d.method}</td><td>${d.note||'-'}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openDonationModal('${d.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteDonation('${d.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
@@ -1916,7 +1998,7 @@ function renderExpenses(){
   document.getElementById('expenses-empty').style.display = list.length? 'none':'block';
   document.getElementById('expenses-table').innerHTML = list.map(e=>`
     <tr>
-      <td>${e.branch||'—'}</td><td><span class="tag cost">${e.category}</span></td><td class="num">${afn(e.amount)}</td><td>${toJalali(e.date)}</td><td>${e.note||'—'}</td>
+      <td>${e.branch||'-'}</td><td><span class="tag cost">${e.category}</span></td><td class="num">${afn(e.amount)}</td><td>${toJalali(e.date)}</td><td>${e.note||'-'}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openExpenseModal('${e.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteExpense('${e.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
@@ -2010,7 +2092,7 @@ function saveBookPurchase(id){
   };
   if(id){ const idx = db.bookPurchases.findIndex(x=>x.id===id); db.bookPurchases[idx]=rec; }
   else { db.bookPurchases.unshift(rec); }
-  logAction(id?'ویرایش':'ایجاد', 'خرید کتاب', `${rec.title} — ${rec.source} — ${afn(rec.totalCost)}`);
+  logAction(id?'ویرایش':'ایجاد', 'خرید کتاب', `${rec.title} · ${rec.source} · ${afn(rec.totalCost)}`);
   closeModal(); save();
 }
 function deleteBookPurchase(id){ if(!confirm('این خرید حذف شود؟')) return; const it=db.bookPurchases.find(x=>x.id===id); db.bookPurchases = db.bookPurchases.filter(x=>x.id!==id); logAction('حذف','خرید کتاب',it?it.title:''); save(); }
@@ -2021,7 +2103,7 @@ function openBookSourceHistoryModal(source){
   const totalPaid = orders.reduce((s,b)=>s+(Number(b.paidAmount)||0),0);
   const totalRemaining = totalCost - totalPaid;
   openModal(`
-    <h3>سابقهٔ سفارش‌ها — ${source}</h3>
+    <h3>سابقهٔ سفارش‌ها · ${source}</h3>
     <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:16px;">
       <div class="card c-cost"><div class="label">مجموع سفارش‌ها</div><div class="value cost" style="font-size:15px;">${afn(totalCost)}</div></div>
       <div class="card c-income"><div class="label">مجموع پرداخت‌شده</div><div class="value income" style="font-size:15px;">${afn(totalPaid)}</div></div>
@@ -2031,10 +2113,10 @@ function openBookSourceHistoryModal(source){
       <thead><tr><th>عنوان</th><th>شعبه</th><th>تعداد</th><th>مجموع هزینه</th><th>پرداخت‌شده</th><th>باقیمانده</th><th>تاریخ سفارش</th><th>سررسید</th></tr></thead>
       <tbody>${orders.map(b=>`
         <tr>
-          <td>${b.title}</td><td>${b.branch||'—'}</td><td class="num">${faDigits(b.quantity||0)}</td>
+          <td>${b.title}</td><td>${b.branch||'-'}</td><td class="num">${faDigits(b.quantity||0)}</td>
           <td class="num">${afn(b.totalCost)}</td><td class="num">${afn(b.paidAmount||0)}</td>
           <td class="num">${afn((b.totalCost||0)-(b.paidAmount||0))}</td>
-          <td>${toJalali(b.date)}</td><td>${b.dueDate?toJalali(b.dueDate):'—'}</td>
+          <td>${toJalali(b.date)}</td><td>${b.dueDate?toJalali(b.dueDate):'-'}</td>
         </tr>
       `).join('')}</tbody>
     </table></div>
@@ -2048,10 +2130,10 @@ function renderBooks(){
   document.getElementById('book-purchases-table').innerHTML = db.bookPurchases.map(b=>{
     const remaining = (b.totalCost||0)-(b.paidAmount||0);
     return `<tr>
-      <td>${b.title}</td><td>${b.source?`<span class="code-badge" onclick="openBookSourceHistoryModal('${b.source.replace(/'/g,"\\'")}')">${b.source}</span>`:'—'}</td><td>${b.branch||'—'}</td><td class="num">${faDigits(b.quantity||0)}</td>
+      <td>${b.title}</td><td>${b.source?`<span class="code-badge" onclick="openBookSourceHistoryModal('${b.source.replace(/'/g,"\\'")}')">${b.source}</span>`:'-'}</td><td>${b.branch||'-'}</td><td class="num">${faDigits(b.quantity||0)}</td>
       <td class="num">${afn(b.unitCost)}</td><td class="num">${afn(b.totalCost)}</td>
       <td class="num">${afn(b.paidAmount||0)}</td><td class="num">${remaining>0?`<span class="tag cost">${afn(remaining)}</span>`:`<span class="tag income">تسویه</span>`}</td>
-      <td>${b.dueDate?toJalali(b.dueDate):'—'}</td><td>${toJalali(b.date)}</td>
+      <td>${b.dueDate?toJalali(b.dueDate):'-'}</td><td>${toJalali(b.date)}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openBookPurchaseModal('${b.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteBookPurchase('${b.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
@@ -2077,9 +2159,9 @@ function renderBooks(){
   document.getElementById('book-sales-empty').style.display = sold.length? 'none':'block';
   document.getElementById('book-sales-table').innerHTML = sold.map(s=>`
     <tr>
-      <td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${s.bookTitle||'—'}</td>
-      <td class="num">${s.bookPrice?afn(s.bookPrice):'—'}</td><td>${s.bookTitle?`<span class="tag ${s.bookPaid?'income':'cost'}">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'—'}</td>
-      <td class="num">${s.idCardPrice?afn(s.idCardPrice):'—'}</td><td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'—'}</td>
+      <td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${s.bookTitle||'-'}</td>
+      <td class="num">${s.bookPrice?afn(s.bookPrice):'-'}</td><td>${s.bookTitle?`<span class="tag ${s.bookPaid?'income':'cost'}">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
+      <td class="num">${s.idCardPrice?afn(s.idCardPrice):'-'}</td><td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${toJalali(s.registerDate)}</td>
     </tr>
   `).join('');
@@ -2107,9 +2189,9 @@ function renderBooks(){
   document.getElementById('books-trend-chart').innerHTML = trend.map(d=>`
     <div style="display:flex; flex-direction:column; align-items:center; gap:6px; flex:1;">
       <div style="display:flex; align-items:flex-end; gap:3px; height:110px;">
-        <div style="width:11px; border-radius:3px 3px 0 0; background:linear-gradient(180deg,var(--income),#4d7a56); height:${Math.max(3,(d.income/max)*110)}px;" title="درآمد: ${afn(d.income)}"></div>
-        <div style="width:11px; border-radius:3px 3px 0 0; background:linear-gradient(180deg,var(--cost),#8c4235); height:${Math.max(3,(d.cost/max)*110)}px;" title="هزینه: ${afn(d.cost)}"></div>
-        <div style="width:11px; border-radius:3px 3px 0 0; background:linear-gradient(180deg,var(--gold-soft),var(--gold-dim)); height:${Math.max(3,(Math.abs(d.profit)/max)*110)}px;" title="سود: ${afn(d.profit)}"></div>
+        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--income); height:${Math.max(3,(d.income/max)*110)}px;" title="درآمد: ${afn(d.income)}"></div>
+        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--cost); height:${Math.max(3,(d.cost/max)*110)}px;" title="هزینه: ${afn(d.cost)}"></div>
+        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--brand); height:${Math.max(3,(Math.abs(d.profit)/max)*110)}px;" title="سود: ${afn(d.profit)}"></div>
       </div>
       <div style="font-size:10.5px; color:var(--text-dim);">${d.label}</div>
     </div>
@@ -2124,7 +2206,7 @@ function openShareholderModal(id){
   const sh = id ? db.shareholders.find(x=>x.id===id) : null;
   openModal(`
     <h3>${sh?'ویرایش سهامدار':'سهامدار جدید'}</h3>
-    ${sh?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${sh.code||'—'}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
+    ${sh?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${sh.code||'-'}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
     <div class="field"><label>نام</label><input id="f-sh-name" value="${sh?sh.name:''}"></div>
     <div class="field-row">
       <div class="field"><label>سهم از سود (٪)</label><input id="f-sh-share" type="number" min="0" max="100" value="${sh?sh.sharePercent||'':''}"></div>
@@ -2157,7 +2239,7 @@ function saveShareholder(id){
   };
   if(id){ const idx = db.shareholders.findIndex(x=>x.id===id); db.shareholders[idx]=rec; }
   else { db.shareholders.unshift(rec); }
-  logAction(id?'ویرایش':'ایجاد', 'سهامدار', `${rec.name} — ${faDigits(rec.sharePercent)}٪`);
+  logAction(id?'ویرایش':'ایجاد', 'سهامدار', `${rec.name} · ${faDigits(rec.sharePercent)}٪`);
   closeModal(); save();
 }
 function deleteShareholder(id){ if(!confirm('این سهامدار حذف شود؟')) return; const it=db.shareholders.find(x=>x.id===id); db.shareholders = db.shareholders.filter(x=>x.id!==id); logAction('حذف','سهامدار',it?it.name:''); save(); }
@@ -2165,12 +2247,12 @@ function openShareholderProfileModal(id){
   const sh = db.shareholders.find(x=>x.id===id); if(!sh) return;
   openModal(`
     <h3>پروندهٔ سهامدار</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${sh.code||'—'}</span> · سهم: ${faDigits(sh.sharePercent||0)}٪</p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${sh.code||'-'}</span> · سهم: ${faDigits(sh.sharePercent||0)}٪</p>
     <div class="panel" style="background:var(--panel-2); padding:12px 14px; margin-bottom:16px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <span style="font-size:12.5px; color:var(--text-dim);">رمز عبور ورود این سهامدار:</span>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="code-badge" style="cursor:default;">${sh.password||'—'}</span>
+          <span class="code-badge" style="cursor:default;">${sh.password||'-'}</span>
           <button class="btn ghost small" onclick="regenerateShareholderPassword('${sh.id}')">تولید رمز جدید</button>
         </div>
       </div>
@@ -2212,8 +2294,8 @@ function renderShareholders(){
   document.getElementById('shareholders-empty').style.display = db.shareholders.length? 'none':'block';
   document.getElementById('shareholders-table').innerHTML = db.shareholders.map(sh=>`
     <tr>
-      <td><span class="code-badge" onclick="openShareholderProfileModal('${sh.id}')">${sh.code||'—'}</span></td>
-      <td>${sh.name}</td><td class="num">${faDigits(sh.sharePercent||0)}٪</td><td>${sh.phone||'—'}</td>
+      <td><span class="code-badge" onclick="openShareholderProfileModal('${sh.id}')">${sh.code||'-'}</span></td>
+      <td>${sh.name}</td><td class="num">${faDigits(sh.sharePercent||0)}٪</td><td>${sh.phone||'-'}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openShareholderModal('${sh.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteShareholder('${sh.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
@@ -2275,7 +2357,7 @@ function saveReferralSettings(){
     referrerDiscount: Number(document.getElementById('f-ref-referrer').value)||0,
     refereeDiscount: Number(document.getElementById('f-ref-referee').value)||0,
   };
-  logAction('ویرایش', 'تنظیمات تخفیف معرفی', `معرف: ${db.referralSettings.referrerDiscount}٪ — شاگرد جدید: ${db.referralSettings.refereeDiscount}٪`);
+  logAction('ویرایش', 'تنظیمات تخفیف معرفی', `معرف: ${db.referralSettings.referrerDiscount}٪ · شاگرد جدید: ${db.referralSettings.refereeDiscount}٪`);
   save();
   alert('درصدهای تخفیف معرفی ذخیره شد.');
 }
@@ -2327,8 +2409,8 @@ function renderAttendanceClassOptions(){
   const prevVal = sel.value;
   let classList = db.classes;
   if(currentRole==='teacher') classList = classList.filter(c=>c.teacherId===currentTeacherId);
-  sel.innerHTML = '<option value="">— انتخاب کنید —</option>' + classList.map(c=>
-    `<option value="${c.id}">${c.name||c.category} — ${c.branch||'—'}</option>`
+  sel.innerHTML = '<option value="">انتخاب کنید</option>' + classList.map(c=>
+    `<option value="${c.id}">${c.name||c.category} · ${c.branch||'-'}</option>`
   ).join('');
   if(classList.some(c=>c.id===prevVal)) sel.value = prevVal;
   renderAttendanceGrid();
@@ -2368,7 +2450,7 @@ function renderAttendanceGrid(){
     const cells = dates.map(d=>{
       const rec = attendanceRecord(classId, d);
       const mark = rec ? rec.marks[s.id] : undefined;
-      const symbol = mark===true ? '✓' : mark===false ? '✕' : '—';
+      const symbol = mark===true ? '✓' : mark===false ? '✕' : '-';
       const color = mark===true ? 'var(--income)' : mark===false ? 'var(--cost)' : 'var(--text-faint)';
       return `<td id="${attCellId(classId,d,s.id)}" style="text-align:center; cursor:pointer; color:${color}; font-weight:700;" onclick="cycleAttendance('${classId}','${d}','${s.id}')">${symbol}</td>`;
     }).join('');
@@ -2393,7 +2475,7 @@ function cycleAttendance(classId, date, enrollmentId){
 
   const cell = document.getElementById(attCellId(classId,date,enrollmentId));
   if(cell){
-    cell.textContent = next===true ? '✓' : next===false ? '✕' : '—';
+    cell.textContent = next===true ? '✓' : next===false ? '✕' : '-';
     cell.style.color = next===true ? 'var(--income)' : next===false ? 'var(--cost)' : 'var(--text-faint)';
   }
   const tot = studentAttendanceTotals(classId, enrollmentId);
@@ -2439,9 +2521,9 @@ function renderMonthlyTrend(){
   document.getElementById('trend-chart').innerHTML = data.map(d=>`
     <div style="display:flex; flex-direction:column; align-items:center; gap:6px; flex:1;">
       <div style="display:flex; align-items:flex-end; gap:3px; height:110px;">
-        <div style="width:11px; border-radius:3px 3px 0 0; background:linear-gradient(180deg,var(--income),#4d7a56); height:${Math.max(3,(d.income/max)*110)}px;" title="درآمد: ${afn(d.income)}"></div>
-        <div style="width:11px; border-radius:3px 3px 0 0; background:linear-gradient(180deg,var(--cost),#8c4235); height:${Math.max(3,(d.cost/max)*110)}px;" title="هزینه: ${afn(d.cost)}"></div>
-        <div style="width:11px; border-radius:3px 3px 0 0; background:linear-gradient(180deg,var(--gold-soft),var(--gold-dim)); height:${Math.max(3,(Math.abs(d.profit)/max)*110)}px;" title="باقیمانده: ${afn(d.profit)}"></div>
+        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--income); height:${Math.max(3,(d.income/max)*110)}px;" title="درآمد: ${afn(d.income)}"></div>
+        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--cost); height:${Math.max(3,(d.cost/max)*110)}px;" title="هزینه: ${afn(d.cost)}"></div>
+        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--brand); height:${Math.max(3,(Math.abs(d.profit)/max)*110)}px;" title="باقیمانده: ${afn(d.profit)}"></div>
       </div>
       <div style="font-size:10.5px; color:var(--text-dim);">${d.label}</div>
     </div>
@@ -2601,6 +2683,7 @@ renderReportFilterChips();
 renderClassesFilterChips();
 renderExpensesFilterChips();
 renderExportBars();
+updateThemeUI(getCurrentTheme());
 renderAll();
 renderAttendanceClassOptions();
 window.addEventListener('beforeunload', e=>{
@@ -2611,24 +2694,24 @@ window.addEventListener('beforeunload', e=>{
 (function initAccessGate(){
   const sel = document.getElementById('gate-teacher-select');
   if(sel){
-    sel.innerHTML = '<option value="">— نام خود را انتخاب کنید —</option>' +
+    sel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
       db.teachers.filter(t=>t.role==='مدرس').map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
   }
   const shSel = document.getElementById('gate-shareholder-select');
   if(shSel){
-    shSel.innerHTML = '<option value="">— نام خود را انتخاب کنید —</option>' +
+    shSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
       db.shareholders.map(sh=>`<option value="${sh.id}">${sh.name}</option>`).join('');
   }
   const mgrSel = document.getElementById('gate-manager-select');
   if(mgrSel){
     const managers = db.teachers.filter(t=>t.role==='مدیریت');
-    mgrSel.innerHTML = '<option value="">— نام خود را انتخاب کنید —</option>' +
+    mgrSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
       managers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
   }
   const empSel = document.getElementById('gate-employee-select');
   if(empSel){
     const employees = db.teachers.filter(t=>t.role==='کارمند');
-    empSel.innerHTML = '<option value="">— نام خود را انتخاب کنید —</option>' +
+    empSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
       employees.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
   }
   const genBox = document.getElementById('gate-generated-passwords');
