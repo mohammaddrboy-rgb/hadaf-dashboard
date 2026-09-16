@@ -349,7 +349,7 @@
 
       <div class="panel">
         <div class="panel-head"><h2>روند ۶ ماه اخیر · کتاب و کارت شاگردی</h2></div>
-        <div id="books-trend-chart" style="display:flex; align-items:flex-end; gap:10px; padding:10px 4px 0;"></div>
+        <div id="books-trend-chart" class="trend-chart-container"></div>
         <div style="display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-dim);">
           <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--income); margin-left:5px;"></span>درآمد (فروش کتاب و کارت)</span>
           <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--cost); margin-left:5px;"></span>هزینه (خرید از کتاب‌فروشی/مطبعه)</span>
@@ -426,7 +426,7 @@
       </div>
       <div class="panel">
         <div class="panel-head"><h2>ریز هزینه‌ها بر اساس دسته</h2></div>
-        <table><tbody id="report-expense-breakdown"></tbody></table>
+        <div class="table-scroll"><table><tbody id="report-expense-breakdown"></tbody></table></div>
       </div>
       <div class="panel">
         <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>مقایسهٔ شعبه‌ها</h2></div>
@@ -456,7 +456,7 @@
       </div>
       <div class="panel">
         <div class="panel-head"><h2>روند ۶ ماه اخیر</h2></div>
-        <div id="trend-chart" style="display:flex; align-items:flex-end; gap:10px; padding:10px 4px 0;"></div>
+        <div id="trend-chart" class="trend-chart-container"></div>
         <div style="display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-dim);">
           <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--income);margin-inline-end:4px;"></span>سایر درآمدها</span>
           <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--cost);margin-inline-end:4px;"></span>هزینه‌ها</span>
@@ -575,64 +575,144 @@
 
 <!-- ================= ACCESS GATE (LOGIN) ================= -->
 <div class="access-gate" id="access-gate" role="dialog" aria-modal="true" aria-labelledby="gate-title">
-  <div class="gate-card">
-    <div class="brand-mark" style="width:52px; height:52px; margin:0 auto 14px;"><img src="assets/logo.png" alt="لوگوی آموزشگاه هدف" width="52" height="52"></div>
-    <h2 id="gate-title">آموزشگاه هدف</h2>
-    <p class="sub">برای ورود به سامانه، نقش خود را انتخاب و رمز عبور را وارد کنید</p>
-
-    <div class="gate-role-tabs">
-      <button type="button" class="gate-tab active" data-role="shareholder" onclick="switchGateTab('shareholder')">سهامدار</button>
-      <button type="button" class="gate-tab" data-role="manager" onclick="switchGateTab('manager')">مدیر شعبه</button>
-      <button type="button" class="gate-tab" data-role="teacher" onclick="switchGateTab('teacher')">مدرس</button>
-      <button type="button" class="gate-tab" data-role="employee" onclick="switchGateTab('employee')">کارمند</button>
-    </div>
-
-    <div class="gate-role" id="gate-role-shareholder">
-      <div class="gate-role-head"><span>سهامدار</span> <span>(دسترسی کامل)</span></div>
-      <select id="gate-shareholder-select" style="margin-bottom:8px;" aria-label="انتخاب سهامدار"><option value="">نام خود را انتخاب کنید</option></select>
-      <div class="field-row">
-        <input type="password" id="gate-pin-shareholder" placeholder="رمز عبور" aria-label="رمز عبور سهامدار" aria-describedby="gate-error-shareholder" autocomplete="current-password">
-        <button type="button" class="btn" onclick="attemptLogin('shareholder')">ورود</button>
+  <div class="gate-container">
+    <div class="gate-top-bar">
+      <div style="font-size:12px; font-weight:700; color:var(--text-faint); display:flex; align-items:center; gap:6px;">
+        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--income);"></span>
+        نسخه ۳.۰ · سامانه جامع هدف
       </div>
-      <p class="gate-error" id="gate-error-shareholder">رمز عبور یا انتخاب نادرست است.</p>
+      <button type="button" class="theme-toggle-btn" onclick="toggleTheme()" aria-label="تغییر تم تاریک / روشن">
+        <svg class="gate-theme-sun" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width:15px; height:15px;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="gate-theme-moon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width:15px; height:15px; display:none;"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <span class="gate-theme-label">تم روشن</span>
+      </button>
     </div>
 
-    <div class="gate-role" id="gate-role-manager" style="display:none;">
-      <div class="gate-role-head"><span>مدیر شعبه</span> <span>(همه بخش‌ها به‌جز سهامداران)</span></div>
-      <select id="gate-manager-select" style="margin-bottom:8px;" aria-label="انتخاب مدیر شعبه"><option value="">نام خود را انتخاب کنید</option></select>
-      <div class="field-row">
-        <input type="password" id="gate-pin-manager" placeholder="رمز عبور" aria-label="رمز عبور مدیر شعبه" aria-describedby="gate-error-manager" autocomplete="current-password">
-        <button type="button" class="btn" onclick="attemptLogin('manager')">ورود</button>
+    <div class="gate-card">
+      <div class="gate-brand">
+        <div class="gate-brand-logo">
+          <img src="assets/logo.png" alt="لوگوی آموزشگاه هدف" width="42" height="42">
+        </div>
+        <h2 id="gate-title">سامانه مدیریت آموزشگاه هدف</h2>
+        <p>پرتال جامع مدیریت مالی، آموزشی، پرسنلی و آمار شعبات</p>
       </div>
-      <p class="gate-error" id="gate-error-manager">رمز عبور یا انتخاب نادرست است.</p>
-    </div>
 
-    <div class="gate-role" id="gate-role-teacher" style="display:none;">
-      <div class="gate-role-head"><span>مدرس</span> <span>(صنف‌های خودش و برنامهٔ کلی)</span></div>
-      <select id="gate-teacher-select" style="margin-bottom:8px;" aria-label="انتخاب مدرس"><option value="">نام خود را انتخاب کنید</option></select>
-      <div class="field-row">
-        <input type="password" id="gate-pin-teacher" placeholder="رمز عبور" aria-label="رمز عبور مدرس" aria-describedby="gate-error-teacher" autocomplete="current-password">
-        <button type="button" class="btn" onclick="attemptLogin('teacher')">ورود</button>
+      <div class="gate-role-tabs" role="tablist">
+        <button type="button" class="gate-tab active" data-role="shareholder" onclick="switchGateTab('shareholder')" role="tab" aria-selected="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+          <span>سهامدار</span>
+        </button>
+        <button type="button" class="gate-tab" data-role="manager" onclick="switchGateTab('manager')" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0113 0"/></svg>
+          <span>مدیر شعبه</span>
+        </button>
+        <button type="button" class="gate-tab" data-role="teacher" onclick="switchGateTab('teacher')" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          <span>مدرس</span>
+        </button>
+        <button type="button" class="gate-tab" data-role="employee" onclick="switchGateTab('employee')" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span>کارمند</span>
+        </button>
       </div>
-      <p class="gate-error" id="gate-error-teacher">رمز عبور یا انتخاب نادرست است.</p>
-    </div>
 
-    <div class="gate-role" id="gate-role-employee" style="display:none;">
-      <div class="gate-role-head"><span>کارمند</span> <span>(پذیرش، ثبت‌نام و امور روزمره)</span></div>
-      <select id="gate-employee-select" style="margin-bottom:8px;" aria-label="انتخاب کارمند"><option value="">نام خود را انتخاب کنید</option></select>
-      <div class="field-row">
-        <input type="password" id="gate-pin-employee" placeholder="رمز عبور" aria-label="رمز عبور کارمند" aria-describedby="gate-error-employee" autocomplete="current-password">
-        <button type="button" class="btn" onclick="attemptLogin('employee')">ورود</button>
+      <!-- Shareholder Form -->
+      <div class="gate-role-panel" id="gate-role-shareholder">
+        <div class="gate-field">
+          <label for="gate-shareholder-select">نام کاربری سهامدار <span class="badge">دسترسی کامل مؤسس</span></label>
+          <select id="gate-shareholder-select"><option value="">نام خود را انتخاب کنید</option></select>
+        </div>
+        <div class="gate-field">
+          <label for="gate-pin-shareholder">رمز عبور پرونده</label>
+          <div class="pw-input-wrap">
+            <input type="password" id="gate-pin-shareholder" placeholder="رمز عبور خود را وارد کنید" autocomplete="current-password" onkeydown="if(event.key==='Enter') attemptLogin('shareholder')">
+            <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('gate-pin-shareholder', this)" title="نمایش یا پنهان‌سازی رمز" aria-label="نمایش یا پنهان‌سازی رمز">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="gate-error-banner" id="gate-error-shareholder"></div>
+        <button type="button" class="btn gate-submit-btn" onclick="attemptLogin('shareholder')">ورود به پنل سهامدار</button>
       </div>
-      <p class="gate-error" id="gate-error-employee">رمز عبور یا انتخاب نادرست است.</p>
+
+      <!-- Manager Form -->
+      <div class="gate-role-panel" id="gate-role-manager" style="display:none;">
+        <div class="gate-field">
+          <label for="gate-manager-select">انتخاب مدیر شعبه <span class="badge">مدیریت شعبات و کلاس‌ها</span></label>
+          <select id="gate-manager-select"><option value="">نام خود را انتخاب کنید</option></select>
+        </div>
+        <div class="gate-field">
+          <label for="gate-pin-manager">رمز عبور پرسنلی</label>
+          <div class="pw-input-wrap">
+            <input type="password" id="gate-pin-manager" placeholder="رمز عبور خود را وارد کنید" autocomplete="current-password" onkeydown="if(event.key==='Enter') attemptLogin('manager')">
+            <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('gate-pin-manager', this)" title="نمایش یا پنهان‌سازی رمز" aria-label="نمایش یا پنهان‌سازی رمز">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="gate-error-banner" id="gate-error-manager"></div>
+        <button type="button" class="btn gate-submit-btn" onclick="attemptLogin('manager')">ورود به پنل مدیریت شعبه</button>
+      </div>
+
+      <!-- Teacher Form -->
+      <div class="gate-role-panel" id="gate-role-teacher" style="display:none;">
+        <div class="gate-field">
+          <label for="gate-teacher-select">انتخاب استاد / مدرس <span class="badge">صنف‌ها و حضور و غیاب</span></label>
+          <select id="gate-teacher-select"><option value="">نام خود را انتخاب کنید</option></select>
+        </div>
+        <div class="gate-field">
+          <label for="gate-pin-teacher">رمز عبور مدرس</label>
+          <div class="pw-input-wrap">
+            <input type="password" id="gate-pin-teacher" placeholder="رمز عبور خود را وارد کنید" autocomplete="current-password" onkeydown="if(event.key==='Enter') attemptLogin('teacher')">
+            <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('gate-pin-teacher', this)" title="نمایش یا پنهان‌سازی رمز" aria-label="نمایش یا پنهان‌سازی رمز">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="gate-error-banner" id="gate-error-teacher"></div>
+        <button type="button" class="btn gate-submit-btn" onclick="attemptLogin('teacher')">ورود به پرتال اساتید</button>
+      </div>
+
+      <!-- Employee Form -->
+      <div class="gate-role-panel" id="gate-role-employee" style="display:none;">
+        <div class="gate-field">
+          <label for="gate-employee-select">انتخاب کارمند / پذیرش <span class="badge">پذیرش، ثبت‌نام و مطبوعات</span></label>
+          <select id="gate-employee-select"><option value="">نام خود را انتخاب کنید</option></select>
+        </div>
+        <div class="gate-field">
+          <label for="gate-pin-employee">رمز عبور کارمند</label>
+          <div class="pw-input-wrap">
+            <input type="password" id="gate-pin-employee" placeholder="رمز عبور خود را وارد کنید" autocomplete="current-password" onkeydown="if(event.key==='Enter') attemptLogin('employee')">
+            <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('gate-pin-employee', this)" title="نمایش یا پنهان‌سازی رمز" aria-label="نمایش یا پنهان‌سازی رمز">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="gate-error-banner" id="gate-error-employee"></div>
+        <button type="button" class="btn gate-submit-btn" onclick="attemptLogin('employee')">ورود به پنل کارمند</button>
+      </div>
+
+      <div id="gate-generated-passwords" style="display:none; text-align:right; background:var(--brand-bg); border:1px solid var(--brand-border); border-radius:var(--radius-sm); padding:10px 12px; margin-top:14px; max-height:160px; overflow-y:auto; font-size:11.5px; color:var(--text);"></div>
+
+      <!-- Quick Demo Login Drawer -->
+      <div class="gate-quick-box">
+        <button type="button" class="quick-toggle-btn" onclick="toggleGateDemoLogins()">
+          <span style="display:flex; align-items:center; gap:6px;">
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            ورود سریع آزمایشی برای بررسی سامانه (۱ کلیک)
+          </span>
+          <svg id="gate-quick-chevron" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform 200ms cubic-bezier(0.16, 1, 0.3, 1);"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="gate-quick-list" class="quick-logins-list" style="display:none;"></div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <button type="button" class="btn ghost small" style="width:100%; font-size:11px; justify-content:center;" onclick="toggleGateAllPasswords()">فهرست رمزهای عبور فعال پرسنل و مدرسان</button>
+        <div id="gate-all-passwords" class="all-passwords-table-wrap" style="display:none; text-align:right; background:var(--panel-2); padding:10px 12px; font-size:11.5px;"></div>
+      </div>
+
+      <p class="hint" style="margin-top:14px; text-align:center; font-size:11.2px;">رمزهای عبور هر شخص از داخل پرونده‌اش در بخش «سهامداران» یا «پرسنل» قابل تنظیم است.</p>
     </div>
-
-    <div id="gate-generated-passwords" style="display:none; text-align:right; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:10px; max-height:160px; overflow-y:auto; font-size:11.5px;"></div>
-
-    <button type="button" class="btn ghost small" style="width:100%; margin-top:10px;" onclick="toggleGateAllPasswords()">نمایش فهرست همهٔ رمزهای عبور فعلی</button>
-    <div id="gate-all-passwords" style="display:none; text-align:right; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:8px; max-height:220px; overflow-y:auto; font-size:11.5px;"></div>
-
-    <p class="hint" style="margin-top:12px; text-align:center;">رمزهای عبور از پروندهٔ هر شخص توسط سهامدار قابل مشاهده و تغییرند.</p>
   </div>
 </div>
 

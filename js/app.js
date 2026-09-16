@@ -20,6 +20,9 @@ function updateThemeUI(theme) {
     if (moon) moon.style.display = 'inline-block';
     if (lbl) lbl.textContent = 'تم تاریک';
   }
+  document.querySelectorAll('.gate-theme-sun').forEach(s => s.style.display = theme === 'dark' ? 'inline-block' : 'none');
+  document.querySelectorAll('.gate-theme-moon').forEach(m => m.style.display = theme === 'dark' ? 'none' : 'inline-block');
+  document.querySelectorAll('.gate-theme-label').forEach(l => l.textContent = theme === 'dark' ? 'تم روشن' : 'تم تاریک');
 }
 function toggleTheme() {
   const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
@@ -41,11 +44,27 @@ function toggleMobileNav(force) {
 }
 
 function switchGateTab(role) {
-  document.querySelectorAll('.gate-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-role') === role));
+  document.querySelectorAll('.gate-tab').forEach(t => {
+    const isActive = t.getAttribute('data-role') === role;
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
   ['shareholder', 'manager', 'teacher', 'employee'].forEach(r => {
     const el = document.getElementById('gate-role-' + r);
-    if (el) el.style.display = (r === role ? 'block' : 'none');
+    if (el) el.style.display = (r === role ? 'flex' : 'none');
+    const err = document.getElementById('gate-error-' + r);
+    if (err) { err.style.display = 'none'; err.textContent = ''; }
   });
+}
+
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isPw = input.type === 'password';
+  input.type = isPw ? 'text' : 'password';
+  btn.innerHTML = isPw
+    ? `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24M1 1l22 22"/></svg>`
+    : `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
 }
 
 const VIEW_TITLES = {
@@ -387,48 +406,57 @@ function hideAccessGate(){
   document.getElementById('access-gate').classList.remove('active');
 }
 function attemptLogin(role){
-  const pinInput = document.getElementById('gate-pin-'+role);
+  const errEl = document.getElementById('gate-error-' + role);
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  const pinInput = document.getElementById('gate-pin-' + role);
   const pin = pinInput ? pinInput.value.trim() : '';
   let actorName = '';
   let realPassword = '';
 
+  const showError = (msg) => {
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+  };
+
   if(role==='teacher'){
     const sel = document.getElementById('gate-teacher-select');
     const tid = sel ? sel.value : '';
-    if(!tid){ document.getElementById('gate-error-'+role).textContent='لطفاً نام خود را انتخاب کنید.'; document.getElementById('gate-error-'+role).style.display='block'; return; }
+    if(!tid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
     const t = db.teachers.find(x=>x.id===tid);
     if(!t) return;
     realPassword = t.password || '';
-    if(pin !== realPassword){ document.getElementById('gate-error-'+role).textContent='رمز عبور نادرست است.'; document.getElementById('gate-error-'+role).style.display='block'; return; }
+    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
     currentTeacherId = tid;
     sessionStorage.setItem('hadaf_teacher_id', tid);
     actorName = t.name;
   } else if(role==='shareholder'){
     const sel = document.getElementById('gate-shareholder-select');
     const shid = sel ? sel.value : '';
-    if(!shid){ document.getElementById('gate-error-'+role).textContent='لطفاً نام خود را انتخاب کنید.'; document.getElementById('gate-error-'+role).style.display='block'; return; }
+    if(!shid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
     const sh = db.shareholders.find(x=>x.id===shid);
     if(!sh) return;
     realPassword = sh.password || '';
-    if(pin !== realPassword){ document.getElementById('gate-error-'+role).textContent='رمز عبور نادرست است.'; document.getElementById('gate-error-'+role).style.display='block'; return; }
+    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
     actorName = sh.name;
   } else if(role==='manager'){
     const sel = document.getElementById('gate-manager-select');
     const mid = sel ? sel.value : '';
-    if(!mid){ document.getElementById('gate-error-'+role).textContent='لطفاً نام خود را انتخاب کنید.'; document.getElementById('gate-error-'+role).style.display='block'; return; }
+    if(!mid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
     const m = db.teachers.find(x=>x.id===mid);
     if(!m) return;
     realPassword = m.password || '';
-    if(pin !== realPassword){ document.getElementById('gate-error-'+role).textContent='رمز عبور نادرست است.'; document.getElementById('gate-error-'+role).style.display='block'; return; }
+    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
     actorName = m.name;
   } else if(role==='employee'){
     const sel = document.getElementById('gate-employee-select');
     const eid = sel ? sel.value : '';
-    if(!eid){ document.getElementById('gate-error-'+role).textContent='لطفاً نام خود را انتخاب کنید.'; document.getElementById('gate-error-'+role).style.display='block'; return; }
+    if(!eid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
     const e = db.teachers.find(x=>x.id===eid);
     if(!e) return;
     realPassword = e.password || '';
-    if(pin !== realPassword){ document.getElementById('gate-error-'+role).textContent='رمز عبور نادرست است.'; document.getElementById('gate-error-'+role).style.display='block'; return; }
+    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
     actorName = e.name;
   }
   currentRole = role;
@@ -438,24 +466,112 @@ function attemptLogin(role){
   logAction('ورود', 'نشست', `${ROLE_LABELS[role]} · ${actorName}`);
   hideAccessGate();
   applyRoleVisibility();
-  switchView(role==='teacher' ? 'classes' : role==='employee' ? 'students' : 'dashboard');
+
+  // Navigate to hash view if valid for this role, else default role view
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  const defaultView = role==='teacher' ? 'classes' : role==='employee' ? 'students' : 'dashboard';
+  const targetView = (hash && VIEW_TITLES[hash] && navAllowed(hash)) ? hash : defaultView;
+  switchView(targetView, true);
 }
+
 function logoutRole(){
   if(currentRole) logAction('خروج', 'نشست', `${ROLE_LABELS[currentRole]} · ${currentActorName}`);
   sessionStorage.removeItem('hadaf_role'); sessionStorage.removeItem('hadaf_teacher_id'); sessionStorage.removeItem('hadaf_actor_name');
   currentRole=''; currentTeacherId=''; currentActorName='';
   showAccessGate();
+  renderQuickLoginCards();
   renderGateAllPasswords();
 }
+
+function renderQuickLoginCards() {
+  const container = document.getElementById('gate-quick-list');
+  if (!container) return;
+  const cards = [];
+
+  const sh = db.shareholders && db.shareholders[0];
+  if (sh) {
+    cards.push(`
+      <div class="quick-login-card">
+        <div class="quick-login-info">
+          <b>${sh.name}</b>
+          <span class="quick-login-code">سهامدار اصلی · رمز: <code>${sh.password || '4545'}</code></span>
+        </div>
+        <button type="button" class="btn small" onclick="quickLoginAs('shareholder', '${sh.id}', '${sh.password || '4545'}')">ورود آزمایشی</button>
+      </div>
+    `);
+  }
+
+  const mgr = db.teachers && db.teachers.find(t => t.role === 'مدیریت');
+  if (mgr) {
+    cards.push(`
+      <div class="quick-login-card">
+        <div class="quick-login-info">
+          <b>${mgr.name}</b>
+          <span class="quick-login-code">مدیر شعبه · رمز: <code>${mgr.password || '2026'}</code></span>
+        </div>
+        <button type="button" class="btn small secondary" onclick="quickLoginAs('manager', '${mgr.id}', '${mgr.password || '2026'}')">ورود آزمایشی</button>
+      </div>
+    `);
+  }
+
+  const tchr = db.teachers && db.teachers.find(t => t.role === 'مدرس');
+  if (tchr) {
+    cards.push(`
+      <div class="quick-login-card">
+        <div class="quick-login-info">
+          <b>${tchr.name}</b>
+          <span class="quick-login-code">مدرس · رمز: <code>${tchr.password || '1010'}</code></span>
+        </div>
+        <button type="button" class="btn small secondary" onclick="quickLoginAs('teacher', '${tchr.id}', '${tchr.password || '1010'}')">ورود آزمایشی</button>
+      </div>
+    `);
+  }
+
+  const emp = db.teachers && db.teachers.find(t => t.role === 'کارمند');
+  if (emp) {
+    cards.push(`
+      <div class="quick-login-card">
+        <div class="quick-login-info">
+          <b>${emp.name}</b>
+          <span class="quick-login-code">کارمند پذیرش · رمز: <code>${emp.password || '1234'}</code></span>
+        </div>
+        <button type="button" class="btn small secondary" onclick="quickLoginAs('employee', '${emp.id}', '${emp.password || '1234'}')">ورود آزمایشی</button>
+      </div>
+    `);
+  }
+
+  container.innerHTML = cards.join('');
+}
+
+function toggleGateDemoLogins() {
+  const box = document.getElementById('gate-quick-list');
+  const chevron = document.getElementById('gate-quick-chevron');
+  if (!box) return;
+  const isHidden = box.style.display === 'none';
+  box.style.display = isHidden ? 'grid' : 'none';
+  if (chevron) chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+  if (isHidden) renderQuickLoginCards();
+}
+
+function quickLoginAs(role, id, password) {
+  switchGateTab(role);
+  const sel = document.getElementById('gate-' + role + '-select');
+  if (sel) sel.value = id;
+  const pinInput = document.getElementById('gate-pin-' + role);
+  if (pinInput) pinInput.value = password;
+  attemptLogin(role);
+}
+
 function renderGateAllPasswords(){
   const box = document.getElementById('gate-all-passwords');
   if(!box) return;
   const rows = [
-    ...db.shareholders.map(sh=>`${sh.name} · سهامدار (${sh.code}): <b class="code-badge" style="cursor:default;">${sh.password||'-'}</b>`),
-    ...db.teachers.map(t=>`${t.name} · ${t.role||'مدرس'} (${t.code||'-'}): <b class="code-badge" style="cursor:default;">${t.password||'-'}</b>`),
+    ...db.shareholders.map(sh=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${sh.name}</b> <small style="color:var(--text-dim);">(سهامدار · ${sh.code||'-'})</small></span> <code class="code-badge" style="cursor:default;">${sh.password||'-'}</code></div>`),
+    ...db.teachers.map(t=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${t.name}</b> <small style="color:var(--text-dim);">(${t.role||'مدرس'} · ${t.code||'-'})</small></span> <code class="code-badge" style="cursor:default;">${t.password||'-'}</code></div>`),
   ];
-  box.innerHTML = rows.length ? rows.join('<br>') : 'هنوز کسی ثبت نشده است.';
+  box.innerHTML = rows.length ? rows.join('') : '<div style="color:var(--text-dim); text-align:center;">هنوز کاربری ثبت نشده است.</div>';
 }
+
 function toggleGateAllPasswords(){
   const box = document.getElementById('gate-all-passwords');
   if(!box) return;
@@ -473,12 +589,13 @@ function logAction(action, entityType, label){
   if(db.activityLog.length > 800) db.activityLog.length = 800;
 }
 
-/* ---------------- Navigation ---------------- */
+/* ---------------- Navigation & History Routing ---------------- */
 document.getElementById('nav').addEventListener('click', e=>{
   const btn = e.target.closest('.navbtn'); if(!btn) return;
-  switchView(btn.dataset.view);
+  switchView(btn.dataset.view, true);
 });
-function switchView(name){
+
+function switchView(name, updateHash = true){
   if(!navAllowed(name)) return;
   if(attendanceDirty && name!=='attendance') commitAttendanceSave(true);
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
@@ -491,15 +608,60 @@ function switchView(name){
   if (hSub && meta) hSub.textContent = meta.sub;
   if (typeof toggleMobileNav === 'function') toggleMobileNav(false);
 
+  // Update hash & browser history
+  if (updateHash) {
+    const targetHash = '#' + name;
+    if (window.location.hash !== targetHash) {
+      if (window.location.hash) {
+        history.pushState({ view: name }, '', targetHash);
+      } else {
+        history.replaceState({ view: name }, '', targetHash);
+      }
+    }
+  }
+
   if(name==='classes') renderClasses();
   if(name==='attendance') renderAttendanceClassOptions();
 }
 
+// Handle Browser Back / Forward buttons & Hash navigation
+window.addEventListener('popstate', (e) => {
+  const overlay = document.getElementById('overlay');
+  if (overlay && overlay.classList.contains('active')) {
+    closeModal();
+    return;
+  }
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  if (hash && VIEW_TITLES[hash] && navAllowed(hash)) {
+    switchView(hash, false);
+  } else if (!hash && navAllowed('dashboard')) {
+    switchView('dashboard', false);
+  }
+});
+
+window.addEventListener('hashchange', () => {
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  if (hash && VIEW_TITLES[hash] && navAllowed(hash)) {
+    switchView(hash, false);
+  }
+});
+
 /* ---------------- Modal engine ---------------- */
 const overlay = document.getElementById('overlay');
 const modalBody = document.getElementById('modal-body');
-function openModal(html, opts){ modalBody.innerHTML = html; modalBody.classList.toggle('wide', !!(opts && opts.wide)); overlay.classList.add('active'); }
-function closeModal(){ overlay.classList.remove('active'); modalBody.innerHTML=''; modalBody.classList.remove('wide'); }
+function openModal(html, opts){
+  modalBody.innerHTML = html;
+  modalBody.classList.toggle('wide', !!(opts && opts.wide));
+  overlay.classList.add('active');
+  try {
+    history.pushState({ modalOpen: true }, '');
+  } catch(e) {}
+}
+function closeModal(){
+  overlay.classList.remove('active');
+  modalBody.innerHTML='';
+  modalBody.classList.remove('wide');
+}
 overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });
 
 /* ---------------- Computed helpers ---------------- */
@@ -2187,13 +2349,13 @@ function renderBooks(){
   });
   const max = Math.max(1, ...trend.map(d=>Math.max(d.income, d.cost, Math.abs(d.profit))));
   document.getElementById('books-trend-chart').innerHTML = trend.map(d=>`
-    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; flex:1;">
-      <div style="display:flex; align-items:flex-end; gap:3px; height:110px;">
-        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--income); height:${Math.max(3,(d.income/max)*110)}px;" title="درآمد: ${afn(d.income)}"></div>
-        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--cost); height:${Math.max(3,(d.cost/max)*110)}px;" title="هزینه: ${afn(d.cost)}"></div>
-        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--brand); height:${Math.max(3,(Math.abs(d.profit)/max)*110)}px;" title="سود: ${afn(d.profit)}"></div>
+    <div class="trend-chart-bar-group">
+      <div class="trend-chart-bar-wrap">
+        <div class="trend-chart-bar" style="background:var(--income); height:${Math.max(4,(d.income/max)*105)}px;" title="درآمد: ${afn(d.income)}"></div>
+        <div class="trend-chart-bar" style="background:var(--cost); height:${Math.max(4,(d.cost/max)*105)}px;" title="هزینه: ${afn(d.cost)}"></div>
+        <div class="trend-chart-bar" style="background:var(--brand); height:${Math.max(4,(Math.abs(d.profit)/max)*105)}px;" title="سود: ${afn(d.profit)}"></div>
       </div>
-      <div style="font-size:10.5px; color:var(--text-dim);">${d.label}</div>
+      <div class="trend-chart-label">${d.label}</div>
     </div>
   `).join('');
 }
@@ -2519,13 +2681,13 @@ function renderMonthlyTrend(){
   const data = monthlyTrendData();
   const max = Math.max(1, ...data.map(d=>Math.max(d.income, d.cost, Math.abs(d.profit))));
   document.getElementById('trend-chart').innerHTML = data.map(d=>`
-    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; flex:1;">
-      <div style="display:flex; align-items:flex-end; gap:3px; height:110px;">
-        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--income); height:${Math.max(3,(d.income/max)*110)}px;" title="درآمد: ${afn(d.income)}"></div>
-        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--cost); height:${Math.max(3,(d.cost/max)*110)}px;" title="هزینه: ${afn(d.cost)}"></div>
-        <div style="width:12px; border-radius:3px 3px 0 0; background:var(--brand); height:${Math.max(3,(Math.abs(d.profit)/max)*110)}px;" title="باقیمانده: ${afn(d.profit)}"></div>
+    <div class="trend-chart-bar-group">
+      <div class="trend-chart-bar-wrap">
+        <div class="trend-chart-bar" style="background:var(--income); height:${Math.max(4,(d.income/max)*105)}px;" title="درآمد: ${afn(d.income)}"></div>
+        <div class="trend-chart-bar" style="background:var(--cost); height:${Math.max(4,(d.cost/max)*105)}px;" title="هزینه: ${afn(d.cost)}"></div>
+        <div class="trend-chart-bar" style="background:var(--brand); height:${Math.max(4,(Math.abs(d.profit)/max)*105)}px;" title="باقیمانده: ${afn(d.profit)}"></div>
       </div>
-      <div style="font-size:10.5px; color:var(--text-dim);">${d.label}</div>
+      <div class="trend-chart-label">${d.label}</div>
     </div>
   `).join('');
 }
@@ -2722,10 +2884,15 @@ window.addEventListener('beforeunload', e=>{
   }
   if(currentRole && (currentRole!=='teacher' || currentTeacherId) && currentActorName){
     applyRoleVisibility();
-    switchView(currentRole==='teacher' ? 'classes' : currentRole==='employee' ? 'students' : 'dashboard');
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    const defaultView = currentRole==='teacher' ? 'classes' : currentRole==='employee' ? 'students' : 'dashboard';
+    const targetView = (hash && VIEW_TITLES[hash] && navAllowed(hash)) ? hash : defaultView;
+    switchView(targetView, true);
   } else {
     currentRole = ''; currentTeacherId=''; currentActorName='';
     showAccessGate();
+    renderQuickLoginCards();
+    updateThemeUI(getCurrentTheme());
   }
 })();
 
