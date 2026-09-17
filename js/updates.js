@@ -111,14 +111,15 @@ function teacherIncomeHtml(t){
 function renderMyIncome(){
   const root = document.getElementById('myincome-root');
   if(!root) return;
-  if(currentRole!=='teacher' || !currentTeacherId){
-    root.innerHTML = `<div class="panel"><p style="color:var(--text-dim); text-align:center; padding:12px;">این بخش برای مدرسان است.</p></div>`;
+  const personnelRoles = ['teacher','manager','employee'];
+  if(!personnelRoles.includes(currentRole) || !currentTeacherId){
+    root.innerHTML = `<div class="panel"><p style="color:var(--text-dim); text-align:center; padding:12px;">این بخش برای پرسنل (مدرس، مدیر شعبه و کارمند) است.</p></div>`;
     return;
   }
   const t = db.teachers.find(x=>x.id===currentTeacherId);
-  if(!t){ root.innerHTML = `<div class="panel"><p style="color:var(--text-dim); text-align:center; padding:12px;">اطلاعات مدرس یافت نشد.</p></div>`; return; }
+  if(!t){ root.innerHTML = `<div class="panel"><p style="color:var(--text-dim); text-align:center; padding:12px;">اطلاعات پرسنل یافت نشد.</p></div>`; return; }
   root.innerHTML = `<div class="panel">
-    <div class="panel-head"><h2>درآمد ${t.name}</h2></div>
+    <div class="panel-head"><h2>درآمد و حقوق ${t.name} <span style="font-size:12px; color:var(--text-dim);">(${t.role||'مدرس'})</span></h2></div>
     ${teacherIncomeHtml(t)}
   </div>`;
 }

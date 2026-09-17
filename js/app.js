@@ -83,7 +83,7 @@ const VIEW_TITLES = {
   shareholders: { title: 'سهامداران', sub: 'مدیریت سهامداران و فرمول تقسیم سود مؤسسه' },
   activityLog: { title: 'گزارش فعالیت‌ها', sub: 'تاریخچه و لاگ تغییرات اطلاعات سیستم' },
   discountCodes: { title: 'کدهای تخفیف مکاتب', sub: 'مدیریت کدهای تخفیف توزیع‌شده در مکاتب، کمیشن مدیران و وضعیت استفاده' },
-  myIncome: { title: 'درآمد من', sub: 'درآمد شما از هر صنف و مجموع صنف‌ها، و حقوق پرداخت‌شده به شما' },
+  myIncome: { title: 'درآمد من', sub: 'حقوق و درآمد شما، مالیات کسرشده و پرداخت‌های انجام‌شده' },
   assets: { title: 'دارایی‌های هدف', sub: 'ثبت و مدیریت دارایی‌های آموزشگاه هدف (ویژهٔ سهامداران)' },
   taxReport: { title: 'گزارش مالیاتی (شهریه)', sub: 'گزارش نقدی درآمد شهریه و هزینه‌های مرتبط برای ادارهٔ مالیات (ویژهٔ سهامداران)' },
   settings: { title: 'تنظیمات سامانه', sub: 'پشتیبان‌گیری، بازگردانی و تنظیمات تخفیف' }
@@ -420,7 +420,7 @@ let currentRole = sessionStorage.getItem('hadaf_role') || '';
 let currentTeacherId = sessionStorage.getItem('hadaf_teacher_id') || '';
 let currentActorName = sessionStorage.getItem('hadaf_actor_name') || '';
 function navAllowed(view){
-  if(view==='myIncome') return currentRole==='teacher'; // personal income page — teachers only
+  if(view==='myIncome') return currentRole==='teacher' || currentRole==='manager' || currentRole==='employee'; // personal income/salary page for all personnel
   if(currentRole==='shareholder') return true;
   if(currentRole==='manager') return view!=='shareholders' && view!=='activityLog' && view!=='assets' && view!=='taxReport';
   if(currentRole==='teacher') return view==='classes' || view==='attendance' || view==='myIncome';
@@ -489,6 +489,8 @@ function attemptLogin(role){
     if(!m) return;
     realPassword = m.password || '';
     if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
+    currentTeacherId = mid;
+    sessionStorage.setItem('hadaf_teacher_id', mid);
     actorName = m.name;
   } else if(role==='employee'){
     const sel = document.getElementById('gate-employee-select');
@@ -498,6 +500,8 @@ function attemptLogin(role){
     if(!e) return;
     realPassword = e.password || '';
     if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
+    currentTeacherId = eid;
+    sessionStorage.setItem('hadaf_teacher_id', eid);
     actorName = e.name;
   }
   currentRole = role;
