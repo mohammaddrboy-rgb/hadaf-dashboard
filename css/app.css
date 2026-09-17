@@ -779,11 +779,23 @@ tbody tr:last-child td {
   border-bottom: none;
 }
 
-/* Numbers in table */
+/* Numbers in table — right-aligned so each value sits directly under its
+   right-aligned column header (RTL layout); ltr keeps the digits/amount readable */
 .num {
   direction: ltr;
-  text-align: left;
+  text-align: right;
   white-space: nowrap;
+}
+/* Numeric column headers align with their .num cells */
+thead th.num { text-align: right; }
+
+/* Totals row (tfoot) */
+tfoot .totals-row td {
+  padding: 11px 12px;
+  background: var(--panel-2);
+  border-top: 2px solid var(--border);
+  color: var(--text);
+  font-size: 12.8px;
 }
 
 /* Tags & Badges */

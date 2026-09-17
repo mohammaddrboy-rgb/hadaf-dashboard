@@ -7,7 +7,7 @@
   <link rel="icon" href="assets/logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=3.2">
+  <link rel="stylesheet" href="css/app.css?v=3.4">
   <script>
     (function() {
       try {
@@ -290,7 +290,16 @@
 
     <!-- ================= TEACHERS ================= -->
     <section class="view" id="view-teachers">
-      <div class="topbar" style="justify-content:flex-end;">
+      <div class="topbar" style="justify-content:space-between;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label for="teacher-role-filter" style="font-size:12.5px; color:var(--text-dim);">فیلتر بر اساس نقش:</label>
+          <select id="teacher-role-filter" onchange="onTeacherRoleFilterChange()">
+            <option value="all">همهٔ نقش‌ها</option>
+            <option value="مدرس">مدرس</option>
+            <option value="مدیریت">مدیریت</option>
+            <option value="کارمند">کارمند</option>
+          </select>
+        </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <div class="export-bar" id="export-teachers"></div>
           <button type="button" class="btn" onclick="openTeacherModal()">+ پرسنل جدید</button>
@@ -382,8 +391,9 @@
       <div class="panel">
         <div class="panel-head"><h2>خریدهای کتاب (هزینه)</h2></div>
         <div class="table-scroll"><table>
-          <thead><tr><th>عنوان</th><th>منبع (کتاب‌فروشی/مطبعه)</th><th>شعبه</th><th>تعداد</th><th>قیمت واحد</th><th>مجموع هزینه</th><th>پرداخت‌شده</th><th>باقیمانده</th><th>سررسید</th><th>تاریخ سفارش</th><th></th></tr></thead>
+          <thead><tr><th>عنوان</th><th>منبع (کتاب‌فروشی/مطبعه)</th><th>شعبه</th><th class="num">تعداد</th><th class="num">قیمت واحد</th><th class="num">مجموع هزینه</th><th class="num">پرداخت‌شده</th><th class="num">باقیمانده</th><th>سررسید</th><th>تاریخ سفارش</th><th></th></tr></thead>
           <tbody id="book-purchases-table"></tbody>
+          <tfoot id="book-purchases-foot"></tfoot>
         </table></div>
         <div class="empty" id="book-purchases-empty" style="display:none;">هنوز خریدی ثبت نشده.</div>
       </div>
@@ -392,8 +402,9 @@
         <div class="panel-head"><h2>فروش کتاب و کارت شاگردی به شاگردان (درآمد)</h2></div>
         <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">این جدول از بخش «کتاب و کارت شاگردی» در فرم ثبت‌نام هر شاگرد ساخته می‌شود.</p>
         <div class="table-scroll"><table>
-          <thead><tr><th>شاگرد</th><th>صنف</th><th>کتاب</th><th>قیمت کتاب</th><th>وضعیت کتاب</th><th>قیمت کارت</th><th>وضعیت کارت</th><th>تاریخ ثبت‌نام</th></tr></thead>
+          <thead><tr><th>شاگرد</th><th>صنف</th><th>کتاب</th><th class="num">قیمت کتاب</th><th>وضعیت کتاب</th><th class="num">قیمت کارت</th><th>وضعیت کارت</th><th>تاریخ ثبت‌نام</th></tr></thead>
           <tbody id="book-sales-table"></tbody>
+          <tfoot id="book-sales-foot"></tfoot>
         </table></div>
         <div class="empty" id="book-sales-empty" style="display:none;">هنوز فروشی ثبت نشده.</div>
       </div>
@@ -408,10 +419,25 @@
         </div>
       </div>
       <div class="panel">
-        <div class="filterbar" id="expenses-filters"></div>
+        <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+          <div class="filterbar" id="expenses-filters" style="margin:0;"></div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <label for="expenses-tf" style="font-size:12.5px; color:var(--text-dim);">بازهٔ زمانی:</label>
+            <select id="expenses-tf" onchange="onExpenseTimeFilterChange()">
+              <option value="all">همه</option>
+              <option value="daily">روزانه</option>
+              <option value="weekly">هفتگی</option>
+              <option value="monthly">ماهانه</option>
+              <option value="quarterly">فصلی</option>
+              <option value="biannual">شش‌ماهه</option>
+              <option value="annual">سالانه</option>
+            </select>
+          </div>
+        </div>
         <div class="table-scroll"><table>
-          <thead><tr><th>شعبه</th><th>دسته</th><th>مبلغ</th><th>تاریخ</th><th>توضیحات</th><th></th></tr></thead>
+          <thead><tr><th>شعبه</th><th>دسته</th><th class="num">مبلغ</th><th>تاریخ</th><th>توضیحات</th><th></th></tr></thead>
           <tbody id="expenses-table"></tbody>
+          <tfoot id="expenses-foot"></tfoot>
         </table></div>
         <div class="empty" id="expenses-empty" style="display:none;">هنوز هزینه‌ای ثبت نشده.</div>
       </div>
@@ -781,7 +807,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="js/seed.js"></script>
-  <script src="js/app.js?v=3.3"></script>
+  <script src="js/app.js?v=3.4"></script>
   <script src="js/discount-codes.js?v=1.0"></script>
   <script src="js/updates.js?v=1.0"></script>
 </body>

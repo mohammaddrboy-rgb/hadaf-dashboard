@@ -183,6 +183,12 @@ function migrateLegacyData(){
     db.shareholderRestructure2026 = true;
     changed = true;
   }
+  // Set Mushtaq Mirzayi's login password to the value chosen by the owner
+  if(!db.mushtaqPasswordSet){
+    const mushtaq = db.shareholders.find(s=> s.name==='مشتاق میرزایی');
+    if(mushtaq){ mushtaq.password = '084597'; changed = true; }
+    db.mushtaqPasswordSet = true;
+  }
   if(!db.bookPurchases.length){
     const samples = [
       { title:'General English Coursebook 1', source:'مطبعهٔ آریانا', branch:BRANCHES[0], quantity:30, unitCost:250, paidRatio:1 },
@@ -702,7 +708,7 @@ overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });
 
 /* ---------------- Computed helpers ---------------- */
 const CLASS_CATEGORIES = ['جنرال انگلیسی (General English)','آیلتس (IELTS)','تافل (TOEFL)','مکالمه (Conversation)','کودکان و نوجوانان (Kids/Teens)','آماده‌سازی آزمون‌های زبان','سایر'];
-const DONATION_METHODS = ['نقدی','کارت به کارت','دستگاه پوز','آنلاین','سایر'];
+const DONATION_METHODS = ['نقدی','سایر'];
 const EXPENSE_CATEGORIES = ['حقوق و دستمزد مدرسان','اجارهٔ شعبه','قبض و خدمات (برق/آب/گاز/اینترنت)','لوازم آموزشی','تبلیغات و بازاریابی','پذیرایی','سایر'];
 const PROJECT_CATEGORIES = ['کمپین تبلیغاتی','دورهٔ فشرده/کارگاه','آزمون آزمایشی (Mock Test)','مراسم فارغ‌التحصیلی','همکاری با نهاد دیگر','سایر'];
 const BRANCHES = ['شعبه مرکزی','شعبه ۲','شعبه ۳'];
@@ -934,6 +940,21 @@ function classStatusTagClass(st){
   if(st==='پایان‌یافته') return 'cost';
   if(st==='آینده') return 'info';
   return 'income';
+}
+/* Progress driven by elapsed time: start→end is 0→100%.
+   Each course runs ~one month (26 sessions); if no end date, assume start + 1 month.
+   Finished class → 100%, not-yet-started → 0%. */
+function classTimeProgress(c){
+  if(!c || !c.startDate) return 0;
+  const start = new Date(c.startDate+'T00:00:00');
+  if(isNaN(start.getTime())) return 0;
+  let end;
+  if(c.endDate){ end = new Date(c.endDate+'T00:00:00'); }
+  else { end = new Date(start.getTime()); end.setMonth(end.getMonth()+1); }
+  const now = new Date(); now.setHours(0,0,0,0);
+  if(now <= start) return 0;
+  if(now >= end) return 100;
+  return Math.max(0, Math.min(100, Math.round((now - start) / (end - start) * 100)));
 }
 function teacherName(id){ const t = db.teachers.find(x=>x.id===id); return t?t.name:'-'; }
 function teacherClassesList(id){ return db.classes.filter(c=>c.teacherId===id); }
@@ -2051,9 +2072,8 @@ function renderClasses(){
       <td class="num">${c.capacity?faDigits(c.capacity):'-'}</td>
       <td class="num">${faDigits(enrolled)}</td>
       <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td>
-      <td>${progressBarHtml(c.progress||0)}</td>
+      <td>${progressBarHtml(classTimeProgress(c))}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openProgressModal('class','${c.id}')" title="پیشرفت"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg></button>
         <button class="icon-btn" onclick="openClassModal('${c.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteClass('${c.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
@@ -2159,9 +2179,17 @@ function renderStudents(){
 }
 
 /* ---------------- Render: Teachers ---------------- */
+let teacherRoleFilter = 'all';
+function onTeacherRoleFilterChange(){
+  const sel = document.getElementById('teacher-role-filter');
+  teacherRoleFilter = sel ? sel.value : 'all';
+  paginationState['teachers'] = 1;
+  renderTeachers();
+}
 function renderTeachers(){
-  document.getElementById('teachers-empty').style.display = db.teachers.length? 'none':'block';
-  const { pageItems, totalPages } = paginateList('teachers', db.teachers);
+  const fullList = teacherRoleFilter==='all' ? db.teachers : db.teachers.filter(t=>(t.role||'مدرس')===teacherRoleFilter);
+  document.getElementById('teachers-empty').style.display = fullList.length? 'none':'block';
+  const { pageItems, totalPages } = paginateList('teachers', fullList);
   document.getElementById('teachers-table').innerHTML = pageItems.map(t=>{
     const classes = teacherClassesList(t.id);
     const names = classes.map(c=>c.name||c.category).join('، ') || '-';
@@ -2265,8 +2293,15 @@ document.getElementById('expenses-filters').addEventListener('click', e=>{
   renderExpensesFilterChips();
   renderExpenses();
 });
+let expenseTimeFilter = 'all';
+function onExpenseTimeFilterChange(){
+  const sel = document.getElementById('expenses-tf');
+  expenseTimeFilter = sel ? sel.value : 'all';
+  renderExpenses();
+}
 function renderExpenses(){
-  const list = expenseBranchFilter==='all' ? db.expenses : db.expenses.filter(e=>e.branch===expenseBranchFilter);
+  let list = expenseBranchFilter==='all' ? db.expenses : db.expenses.filter(e=>e.branch===expenseBranchFilter);
+  list = filterByDate(list, 'date', expenseTimeFilter);
   document.getElementById('expenses-empty').style.display = list.length? 'none':'block';
   document.getElementById('expenses-table').innerHTML = list.map(e=>`
     <tr>
@@ -2277,6 +2312,12 @@ function renderExpenses(){
       </div></td>
     </tr>
   `).join('');
+  const total = list.reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const label = expenseBranchFilter==='all' ? 'مجموع کل (همهٔ شعبه‌ها)' : `مجموع ${expenseBranchFilter}`;
+  const footEl = document.getElementById('expenses-foot');
+  if(footEl) footEl.innerHTML = list.length
+    ? `<tr class="totals-row"><td colspan="2"><b>${label}</b></td><td class="num"><b>${afn(total)}</b></td><td colspan="3"></td></tr>`
+    : '';
 }
 
 /* ---------------- Render: Report ---------------- */
@@ -2413,6 +2454,15 @@ function renderBooks(){
     </tr>`;
   }).join('');
 
+  // Purchase totals (مجموع هزینه · پرداخت‌شده · باقیمانده)
+  const pTotalCost = db.bookPurchases.reduce((s,b)=>s+(Number(b.totalCost)||0),0);
+  const pTotalPaid = db.bookPurchases.reduce((s,b)=>s+(Number(b.paidAmount)||0),0);
+  const pTotalRemain = pTotalCost - pTotalPaid;
+  const bpFoot = document.getElementById('book-purchases-foot');
+  if(bpFoot) bpFoot.innerHTML = db.bookPurchases.length
+    ? `<tr class="totals-row"><td colspan="5"><b>مجموع</b></td><td class="num"><b>${afn(pTotalCost)}</b></td><td class="num"><b>${afn(pTotalPaid)}</b></td><td class="num"><b>${afn(pTotalRemain)}</b></td><td colspan="3"></td></tr>`
+    : '';
+
   const sources = Array.from(new Set(db.bookPurchases.map(b=>b.source).filter(Boolean)));
   document.getElementById('book-sources-empty').style.display = sources.length? 'none':'block';
   document.getElementById('book-sources-table').innerHTML = sources.map(src=>{
@@ -2437,6 +2487,14 @@ function renderBooks(){
       <td>${toJalali(s.registerDate)}</td>
     </tr>
   `).join('');
+
+  // Sales totals (قیمت کتاب · قیمت کارت)
+  const sTotalBook = sold.reduce((s,st)=>s+(Number(st.bookPrice)||0),0);
+  const sTotalCard = sold.reduce((s,st)=>s+(Number(st.idCardPrice)||0),0);
+  const bsFoot = document.getElementById('book-sales-foot');
+  if(bsFoot) bsFoot.innerHTML = sold.length
+    ? `<tr class="totals-row"><td colspan="3"><b>مجموع</b></td><td class="num"><b>${afn(sTotalBook)}</b></td><td></td><td class="num"><b>${afn(sTotalCard)}</b></td><td colspan="2"></td></tr>`
+    : '';
 
   const totalCost = db.bookPurchases.reduce((s,b)=>s+(Number(b.totalCost)||0),0);
   const totalIncome = db.students.reduce((s,st)=>s + ((st.bookPaid?st.bookPrice||0:0) + (st.idCardPaid?st.idCardPrice||0:0)), 0);
