@@ -320,9 +320,9 @@
 
       <div class="panel">
         <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>محاسبهٔ حقوق این ماه</h2></div>
-        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">تعداد صنف‌های هر مدرس در ماه جاری به‌صورت خودکار شمارش و در نرخ ضرب می‌شود؛ سپس مانده پیش‌پرداخت‌های تسویه‌نشده از آن کسر می‌گردد.</p>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">تعداد صنف‌های هر مدرس در ماه جاری به‌صورت خودکار شمارش و در نرخ ضرب می‌شود؛ سپس مالیات حقوق و مانده پیش‌پرداخت‌های تسویه‌نشده از آن کسر می‌گردد. درصد مالیات از «تنظیمات» قابل تغییر است.</p>
         <div class="table-scroll"><table>
-          <thead><tr><th>مدرس</th><th>نوع پرداخت</th><th>صنف‌های این ماه</th><th>حقوق ناخالص</th><th>مانده پیش‌پرداخت</th><th>خالص قابل پرداخت</th><th></th></tr></thead>
+          <thead><tr><th>مدرس</th><th>نوع پرداخت</th><th class="num">صنف‌های این ماه</th><th class="num">حقوق ناخالص</th><th class="num">مالیات</th><th class="num">مانده پیش‌پرداخت</th><th class="num">خالص قابل پرداخت</th><th></th></tr></thead>
           <tbody id="payroll-table"></tbody>
         </table></div>
         <div class="empty" id="payroll-empty" style="display:none;">هنوز مدرسی ثبت نشده.</div>
@@ -674,6 +674,12 @@
         </div>
         <button type="button" class="btn" onclick="saveReferralSettings()">ذخیره تنظیمات تخفیف</button>
       </div>
+      <div class="panel" id="settings-tax-panel" style="display:none;">
+        <div class="panel-head"><h2>مالیات حقوق مدرسان</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">این درصد از حقوق هر مدرس به‌عنوان مالیات کسر می‌شود و در پروندهٔ هر مدرس نمایش داده می‌شود. مقدار پیش‌فرض ۵٪ است و توسط سهامداران قابل تغییر است.</p>
+        <div class="field" style="max-width:240px;"><label>درصد مالیات حقوق (٪)</label><input id="f-teacher-tax" type="number" min="0" max="100" step="0.5" value=""></div>
+        <button type="button" class="btn" onclick="saveTeacherTaxSettings()">ذخیره درصد مالیات</button>
+      </div>
       <div class="panel" id="settings-pins-panel" style="display:none;">
         <div class="panel-head"><h2>رمزهای عبور ورود</h2></div>
         <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">این رمزها برای تفکیک دسترسی پرسنل و مدرسان در مرورگر هستند. هر سهامدار، مدرس و مدیر شعبه رمز عبور یکتای خودش را دارد که در صفحهٔ «سهامداران» یا «پرسنل» با کلیک روی کد پرونده قابل مشاهده و تغییر است.</p>
@@ -815,8 +821,8 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="js/seed.js"></script>
-  <script src="js/app.js?v=3.5"></script>
+  <script src="js/app.js?v=3.6"></script>
   <script src="js/discount-codes.js?v=1.0"></script>
-  <script src="js/updates.js?v=1.1"></script>
+  <script src="js/updates.js?v=1.2"></script>
 </body>
 </html>

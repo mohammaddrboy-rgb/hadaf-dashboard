@@ -58,6 +58,13 @@ function teacherIncomeHtml(t){
       ? `نوع پرداخت شما: <b>ماهانهٔ ثابت</b> — ${afn(t.payAmount)} در ماه.`
       : `نوع پرداخت شما: <b>به ازای هر صنف</b> — ${afn(t.payAmount)} برای هر صنف در ماه.`;
 
+  // Income tax withheld (percentage set by shareholders)
+  const taxPct = (typeof teacherTaxPercent==='function') ? teacherTaxPercent() : (Number(db.teacherTaxPercent)||0);
+  const monthTax = Math.round(monthGross * taxPct/100);
+  const monthNet = monthGross - monthTax;
+  const lifeTax = Math.round(lifetimeTotal * taxPct/100);
+  const lifeNet = lifetimeTotal - lifeTax;
+
   // Salary payments received
   const payments = teacherSalaryPayments(t.id).slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
   const totalPaid = payments.reduce((s,p)=> s + (Number(p.amount)||0), 0);
@@ -78,9 +85,20 @@ function teacherIncomeHtml(t){
       <div class="card c-info"><div class="label">مجموع حقوق پرداخت‌شده به شما</div><div class="value info">${afn(totalPaid)}</div></div>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>صنف</th><th>شعبه</th><th>شهریهٔ جمع‌آوری‌شده</th><th>${shareHeader}</th></tr></thead>
+      <thead><tr><th>صنف</th><th>شعبه</th><th class="num">شهریهٔ جمع‌آوری‌شده</th><th class="num">${shareHeader}</th></tr></thead>
       <tbody>${classRows}</tbody>
     </table></div>
+
+    <div class="sectiontitle" style="margin-top:18px;">مالیات حقوق (${faDigits(taxPct)}٪)</div>
+    <p class="hint" style="margin:-6px 0 12px;">طبق تصمیم سهامداران، ${faDigits(taxPct)}٪ از حقوق شما به‌عنوان مالیات کسر می‌شود. مبلغ زیر پس از کسر مالیات به شما پرداخت می‌شود.</p>
+    <div class="table-scroll"><table>
+      <thead><tr><th>دوره</th><th class="num">حقوق ناخالص</th><th class="num">مالیات (${faDigits(taxPct)}٪)</th><th class="num">خالص پس از مالیات</th></tr></thead>
+      <tbody>
+        <tr><td>${isFixed?'این ماه (ثابت)':'این ماه'}</td><td class="num">${afn(monthGross)}</td><td class="num">${afn(monthTax)}</td><td class="num"><b style="color:var(--income);">${afn(monthNet)}</b></td></tr>
+        <tr><td>مجموع (تجمعی)</td><td class="num">${afn(lifetimeTotal)}</td><td class="num">${afn(lifeTax)}</td><td class="num"><b style="color:var(--income);">${afn(lifeNet)}</b></td></tr>
+      </tbody>
+    </table></div>
+
     <div class="sectiontitle" style="margin-top:18px;">حقوق پرداخت‌شده به شما</div>
     <div class="table-scroll"><table>
       <thead><tr><th>تاریخ پرداخت</th><th>مبلغ</th><th>دورهٔ (ماه/سال)</th><th>توضیحات</th></tr></thead>

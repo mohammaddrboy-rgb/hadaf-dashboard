@@ -99,6 +99,7 @@ if(!db){
 if(!db.accessPins) db.accessPins = { shareholder:'4545', manager:'2026', teacher:'1010' };
 if(!db.referralSettings) db.referralSettings = { referrerDiscount:5, refereeDiscount:10 };
 if(!db.discountCodeSettings) db.discountCodeSettings = { defaultDiscount:10, defaultCommission:5 };
+if(db.teacherTaxPercent===undefined) db.teacherTaxPercent = 5; // income tax withheld from each teacher's salary (editable by shareholders)
 // One-time load of the 1000 pre-generated school discount codes shipped in the seed
 if(!db.discountCodesSeeded){
   if((!db.discountCodes || !db.discountCodes.length) && window.HADAF_SEED && window.HADAF_SEED.discountCodes){
@@ -1745,8 +1746,12 @@ function teacherGrossSalary(t, y, m){
 function teacherAdvanceBalance(teacherId){
   return db.teacherAdvances.filter(a=>a.teacherId===teacherId && !a.settled).reduce((s,a)=>s+(Number(a.amount)||0),0);
 }
+/* Income tax withheld from a teacher's salary (percentage set by shareholders) */
+function teacherTaxPercent(){ return Number(db.teacherTaxPercent)||0; }
+function teacherSalaryTax(gross){ return Math.round((Number(gross)||0) * teacherTaxPercent() / 100); }
 function teacherNetSalary(t, y, m){
-  return Math.max(0, teacherGrossSalary(t,y,m) - teacherAdvanceBalance(t.id));
+  const gross = teacherGrossSalary(t,y,m);
+  return Math.max(0, gross - teacherSalaryTax(gross) - teacherAdvanceBalance(t.id));
 }
 
 /* ---------------- ADVANCE modal ---------------- */
@@ -1791,14 +1796,15 @@ function paySalary(teacherId){
   const t = db.teachers.find(x=>x.id===teacherId); if(!t) return;
   const now = new Date();
   const gross = teacherGrossSalary(t, now.getFullYear(), now.getMonth());
+  const tax = teacherSalaryTax(gross);
   const advance = teacherAdvanceBalance(teacherId);
-  const net = Math.max(0, gross - advance);
+  const net = Math.max(0, gross - tax - advance);
   if(net<=0 && gross<=0){ alert('برای این مدرس در ماه جاری صنفی ثبت نشده یا حقوق ثابتی تعریف نشده است.'); return; }
-  if(!confirm(`حقوق خالص ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
+  if(!confirm(`حقوق خالص ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
   db.expenses.unshift({
     id: uid(), branch: BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
     note: `حقوق ${t.name} · ${toJalali(todayISO())}`,
-    teacherId: teacherId, salaryGross: gross, salaryAdvance: advance,
+    teacherId: teacherId, salaryGross: gross, salaryTax: tax, salaryTaxPercent: teacherTaxPercent(), salaryAdvance: advance,
     salaryPeriodY: now.getFullYear(), salaryPeriodM: now.getMonth(),
   });
   db.teacherAdvances.forEach(a=>{ if(a.teacherId===teacherId && !a.settled) a.settled = true; });
@@ -2218,11 +2224,12 @@ function renderTeacherAdvances(){
   document.getElementById('payroll-table').innerHTML = db.teachers.map(t=>{
     const cnt = (t.payType==='ماهانه ثابت'||t.payType==='درصد شهریه') ? '-' : faDigits(teacherClassCountInMonth(t.id, y, m));
     const gross = teacherGrossSalary(t, y, m);
+    const tax = teacherSalaryTax(gross);
     const advBal = teacherAdvanceBalance(t.id);
     const net = teacherNetSalary(t, y, m);
     return `<tr>
       <td>${t.name}</td><td>${t.payType||'-'}</td><td class="num">${cnt}</td>
-      <td class="num">${afn(gross)}</td><td class="num">${advBal?afn(advBal):'-'}</td>
+      <td class="num">${afn(gross)}</td><td class="num">${tax?afn(tax):'-'}</td><td class="num">${advBal?afn(advBal):'-'}</td>
       <td class="num"><b style="color:var(--gold-soft);">${afn(net)}</b></td>
       <td><button class="btn ghost small" onclick="paySalary('${t.id}')">ثبت پرداخت</button></td>
     </tr>`;
@@ -2683,6 +2690,21 @@ function renderSettingsPins(){
       document.getElementById('f-ref-referee').value = db.referralSettings.refereeDiscount;
     }
   }
+  const taxPanel = document.getElementById('settings-tax-panel');
+  if(taxPanel){
+    taxPanel.style.display = currentRole==='shareholder' ? 'block' : 'none';
+    if(taxPanel.style.display==='block'){
+      document.getElementById('f-teacher-tax').value = db.teacherTaxPercent;
+    }
+  }
+}
+function saveTeacherTaxSettings(){
+  if(currentRole!=='shareholder'){ alert('فقط سهامداران می‌توانند درصد مالیات را تغییر دهند.'); return; }
+  const val = Math.max(0, Math.min(100, Number(document.getElementById('f-teacher-tax').value)||0));
+  db.teacherTaxPercent = val;
+  logAction('ویرایش', 'مالیات حقوق مدرسان', `${faDigits(val)}٪`);
+  save();
+  alert('درصد مالیات حقوق مدرسان ذخیره شد.');
 }
 function saveReferralSettings(){
   db.referralSettings = {
