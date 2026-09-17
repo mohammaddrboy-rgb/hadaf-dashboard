@@ -114,6 +114,10 @@
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M9 14v3M15 14v3"/></svg>
           دارایی‌های هدف
         </button>
+        <button type="button" class="navbtn" data-view="taxReport">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 14l2 2 4-4M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
+          گزارش مالیاتی
+        </button>
         <button type="button" class="navbtn" data-view="activityLog">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
           گزارش فعالیت‌ها
@@ -590,6 +594,10 @@
       <div id="assets-root"></div>
     </section>
 
+    <section class="view" id="view-taxReport">
+      <div id="tax-report-root"></div>
+    </section>
+
     <section class="view" id="view-discountCodes">
       <div class="panel">
         <div class="panel-head"><h2>خلاصهٔ کدهای تخفیف مکاتب</h2></div>
@@ -807,8 +815,8 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="js/seed.js"></script>
-  <script src="js/app.js?v=3.4"></script>
+  <script src="js/app.js?v=3.5"></script>
   <script src="js/discount-codes.js?v=1.0"></script>
-  <script src="js/updates.js?v=1.0"></script>
+  <script src="js/updates.js?v=1.1"></script>
 </body>
 </html>

@@ -85,6 +85,7 @@ const VIEW_TITLES = {
   discountCodes: { title: 'کدهای تخفیف مکاتب', sub: 'مدیریت کدهای تخفیف توزیع‌شده در مکاتب، کمیشن مدیران و وضعیت استفاده' },
   myIncome: { title: 'درآمد من', sub: 'درآمد شما از هر صنف و مجموع صنف‌ها، و حقوق پرداخت‌شده به شما' },
   assets: { title: 'دارایی‌های هدف', sub: 'ثبت و مدیریت دارایی‌های آموزشگاه هدف (ویژهٔ سهامداران)' },
+  taxReport: { title: 'گزارش مالیاتی (شهریه)', sub: 'گزارش نقدی درآمد شهریه و هزینه‌های مرتبط برای ادارهٔ مالیات (ویژهٔ سهامداران)' },
   settings: { title: 'تنظیمات سامانه', sub: 'پشتیبان‌گیری، بازگردانی و تنظیمات تخفیف' }
 };
 
@@ -420,7 +421,7 @@ let currentActorName = sessionStorage.getItem('hadaf_actor_name') || '';
 function navAllowed(view){
   if(view==='myIncome') return currentRole==='teacher'; // personal income page — teachers only
   if(currentRole==='shareholder') return true;
-  if(currentRole==='manager') return view!=='shareholders' && view!=='activityLog' && view!=='assets';
+  if(currentRole==='manager') return view!=='shareholders' && view!=='activityLog' && view!=='assets' && view!=='taxReport';
   if(currentRole==='teacher') return view==='classes' || view==='attendance' || view==='myIncome';
   if(currentRole==='employee') return view==='classes' || view==='students' || view==='seminars' || view==='books' || view==='discountCodes';
   return false;
@@ -664,6 +665,7 @@ function switchView(name, updateHash = true){
   if(name==='discountCodes' && typeof renderDiscountCodes==='function') renderDiscountCodes();
   if(name==='myIncome' && typeof renderMyIncome==='function') renderMyIncome();
   if(name==='assets' && typeof renderAssets==='function') renderAssets();
+  if(name==='taxReport' && typeof renderTaxReport==='function') renderTaxReport();
 }
 
 // Handle Browser Back / Forward buttons & Hash navigation
@@ -3010,6 +3012,7 @@ function renderAll(){
   if(typeof renderDiscountCodes==='function') renderDiscountCodes();
   if(typeof renderMyIncome==='function') renderMyIncome();
   if(typeof renderAssets==='function') renderAssets();
+  if(typeof renderTaxReport==='function') renderTaxReport();
   if(document.getElementById('att-class-select') && document.getElementById('att-class-select').value) renderAttendanceGrid();
 }
 renderReportFilterChips();

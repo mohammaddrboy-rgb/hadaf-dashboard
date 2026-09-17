@@ -194,6 +194,180 @@ function deleteAsset(id){
   save();
 }
 
+/* ================= Tax report (fees, cash basis) — shareholders only ================= *
+ * Income  = tuition fees actually collected (student.paidAmount), attributed to the
+ *           enrollment/registration date. Excludes books, student cards, donations, seminars.
+ * Costs   = expenses in these categories only (teacher salaries, rent, items for Hadaf use).
+ * Net     = fees collected − those costs.
+ * All figures respect the selected timeframe and branch.
+ * -------------------------------------------------------------------------------------- */
+const TAX_COST_CATEGORIES = ['حقوق و دستمزد مدرسان','اجارهٔ شعبه','لوازم آموزشی'];
+const taxFilter = { tf: 'all', branch: 'all' };
+
+function taxFeeStudents(){
+  return db.students.filter(s=>{
+    if(taxFilter.branch!=='all' && classBranch(s.classId)!==taxFilter.branch) return false;
+    return inTimeframe(s.registerDate, taxFilter.tf);
+  });
+}
+function taxCostExpenses(){
+  return db.expenses.filter(e=>{
+    if(!TAX_COST_CATEGORIES.includes(e.category)) return false;
+    if(taxFilter.branch!=='all' && e.branch!==taxFilter.branch) return false;
+    return inTimeframe(e.date, taxFilter.tf);
+  });
+}
+function taxFeesCollected(){ return taxFeeStudents().reduce((s,st)=> s + (Number(st.paidAmount)||0), 0); }
+function taxCostsByCategory(){
+  const m = {}; TAX_COST_CATEGORIES.forEach(c=> m[c]=0);
+  taxCostExpenses().forEach(e=> m[e.category] += (Number(e.amount)||0));
+  return m;
+}
+function taxFeesByBranch(){
+  const m = {}; BRANCHES.forEach(b=> m[b]=0);
+  taxFeeStudents().forEach(s=>{ const b = classBranch(s.classId); if(m[b]===undefined) m[b]=0; m[b] += (Number(s.paidAmount)||0); });
+  return m;
+}
+function taxMonthly(){
+  const buckets = {};
+  const b = (dateStr)=>{ const [jy,jm]=g2jParts(dateStr); const k=jy+'-'+String(jm).padStart(2,'0'); if(!buckets[k]) buckets[k]={jy,jm,fees:0,cost:0}; return buckets[k]; };
+  taxFeeStudents().forEach(s=>{ if(s.registerDate) b(s.registerDate).fees += (Number(s.paidAmount)||0); });
+  taxCostExpenses().forEach(e=>{ if(e.date) b(e.date).cost += (Number(e.amount)||0); });
+  return Object.values(buckets).sort((a,b)=> a.jy-b.jy || a.jm-b.jm);
+}
+
+function onTaxFilterChange(){
+  const tf = document.getElementById('tax-tf'); const br = document.getElementById('tax-branch');
+  taxFilter.tf = tf ? tf.value : 'all';
+  taxFilter.branch = br ? br.value : 'all';
+  renderTaxReport();
+}
+
+function renderTaxReport(){
+  const root = document.getElementById('tax-report-root');
+  if(!root) return;
+  if(currentRole!=='shareholder'){
+    root.innerHTML = `<div class="panel"><p style="color:var(--text-dim); text-align:center; padding:12px;">این گزارش فقط برای سهامداران قابل دسترسی است.</p></div>`;
+    return;
+  }
+  const fees = taxFeesCollected();
+  const costByCat = taxCostsByCategory();
+  const totalCost = Object.values(costByCat).reduce((a,b)=>a+b,0);
+  const net = fees - totalCost;
+  const byBranch = taxFeesByBranch();
+  const monthly = taxMonthly();
+
+  const tfOpts = [
+    ['all','همه'],['daily','روزانه'],['weekly','هفتگی'],['monthly','ماهانه'],
+    ['quarterly','فصلی'],['biannual','شش‌ماهه'],['annual','سالانه']
+  ].map(([v,l])=>`<option value="${v}" ${taxFilter.tf===v?'selected':''}>${l}</option>`).join('');
+  const brOpts = `<option value="all" ${taxFilter.branch==='all'?'selected':''}>همهٔ شعبه‌ها</option>` +
+    BRANCHES.map(b=>`<option value="${b}" ${taxFilter.branch===b?'selected':''}>${b}</option>`).join('');
+
+  const monthRows = monthly.length ? monthly.map(m=>`
+    <tr>
+      <td>${AFG_MONTHS[m.jm-1]} ${faDigits(m.jy)}</td>
+      <td class="num">${afn(m.fees)}</td>
+      <td class="num">${afn(m.cost)}</td>
+      <td class="num"><b style="color:${m.fees-m.cost>=0?'var(--income)':'var(--cost)'};">${afn(m.fees-m.cost)}</b></td>
+    </tr>`).join('') : `<tr><td colspan="4" class="empty">در این بازه داده‌ای نیست.</td></tr>`;
+
+  const costRows = TAX_COST_CATEGORIES.map(c=>`
+    <tr><td>${c}</td><td class="num">${afn(costByCat[c]||0)}</td></tr>
+  `).join('');
+
+  const branchRows = BRANCHES.map(b=>`
+    <tr><td>${b}</td><td class="num">${afn(byBranch[b]||0)}</td></tr>
+  `).join('');
+
+  root.innerHTML = `
+    <div class="panel">
+      <div class="panel-head" style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <h2>گزارش مالیاتی — درآمد شهریه (نقدی)</h2>
+        <button class="btn ghost" onclick="exportTaxReport()">خروجی اکسل</button>
+      </div>
+      <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">
+        این گزارش فقط شامل <b>شهریهٔ جمع‌آوری‌شده (نقدی)</b> است و درآمد کتاب، کارت شاگردی، سایر درآمدها و سمینارها را در بر نمی‌گیرد.
+        هزینه‌های محاسبه‌شده تنها این دسته‌ها هستند: <b>${TAX_COST_CATEGORIES.join('، ')}</b>.
+        مبالغ شهریه بر اساس تاریخ ثبت‌نام هر شاگرد در بازهٔ انتخابی محاسبه می‌شوند.
+      </p>
+      <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label for="tax-tf" style="font-size:12.5px; color:var(--text-dim);">بازهٔ زمانی:</label>
+          <select id="tax-tf" onchange="onTaxFilterChange()">${tfOpts}</select>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label for="tax-branch" style="font-size:12.5px; color:var(--text-dim);">شعبه:</label>
+          <select id="tax-branch" onchange="onTaxFilterChange()">${brOpts}</select>
+        </div>
+      </div>
+      <div class="cards" style="grid-template-columns:repeat(3,1fr);">
+        <div class="card c-income"><div class="label">شهریهٔ جمع‌آوری‌شده</div><div class="value income">${afn(fees)}</div></div>
+        <div class="card c-cost"><div class="label">مجموع هزینه‌های مرتبط</div><div class="value cost">${afn(totalCost)}</div></div>
+        <div class="card c-profit"><div class="label">درآمد خالص مشمول</div><div class="value profit">${afn(net)}</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>تفکیک ماهانه</h2></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>ماه</th><th class="num">شهریهٔ جمع‌آوری‌شده</th><th class="num">هزینه‌ها</th><th class="num">خالص</th></tr></thead>
+        <tbody>${monthRows}</tbody>
+        <tfoot><tr class="totals-row"><td><b>مجموع</b></td><td class="num"><b>${afn(fees)}</b></td><td class="num"><b>${afn(totalCost)}</b></td><td class="num"><b>${afn(net)}</b></td></tr></tfoot>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>هزینه‌های مرتبط به تفکیک دسته</h2></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>دستهٔ هزینه</th><th class="num">مبلغ</th></tr></thead>
+        <tbody>${costRows}</tbody>
+        <tfoot><tr class="totals-row"><td><b>مجموع هزینه‌ها</b></td><td class="num"><b>${afn(totalCost)}</b></td></tr></tfoot>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>شهریهٔ جمع‌آوری‌شده به تفکیک شعبه</h2></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>شعبه</th><th class="num">شهریهٔ جمع‌آوری‌شده</th></tr></thead>
+        <tbody>${branchRows}</tbody>
+        <tfoot><tr class="totals-row"><td><b>مجموع</b></td><td class="num"><b>${afn(fees)}</b></td></tr></tfoot>
+      </table></div>
+    </div>`;
+}
+
+function exportTaxReport(){
+  const fees = taxFeesCollected();
+  const costByCat = taxCostsByCategory();
+  const totalCost = Object.values(costByCat).reduce((a,b)=>a+b,0);
+  const byBranch = taxFeesByBranch();
+  const monthly = taxMonthly();
+  const tfLabel = ({all:'همه',daily:'روزانه',weekly:'هفتگی',monthly:'ماهانه',quarterly:'فصلی',biannual:'شش‌ماهه',annual:'سالانه'})[taxFilter.tf]||taxFilter.tf;
+
+  const summary = [
+    {'مورد':'بازهٔ زمانی','مبلغ (افغانی)':tfLabel},
+    {'مورد':'شعبه','مبلغ (افغانی)': taxFilter.branch==='all'?'همه':taxFilter.branch},
+    {'مورد':'شهریهٔ جمع‌آوری‌شده (نقدی)','مبلغ (افغانی)':fees},
+    ...TAX_COST_CATEGORIES.map(c=>({'مورد':'هزینه: '+c,'مبلغ (افغانی)':costByCat[c]||0})),
+    {'مورد':'مجموع هزینه‌ها','مبلغ (افغانی)':totalCost},
+    {'مورد':'درآمد خالص مشمول','مبلغ (افغانی)':fees-totalCost},
+  ];
+  const monthlyRows = monthly.map(m=>({'ماه':`${AFG_MONTHS[m.jm-1]} ${m.jy}`,'شهریهٔ جمع‌آوری‌شده':m.fees,'هزینه‌ها':m.cost,'خالص':m.fees-m.cost}));
+  const branchRows = BRANCHES.map(b=>({'شعبه':b,'شهریهٔ جمع‌آوری‌شده':byBranch[b]||0}));
+  const feeDetail = taxFeeStudents().map(s=>({
+    'کد شاگرد': profileCode(s.profileId), 'نام': profileName(s.profileId), 'صنف': className(s.classId),
+    'شعبه': classBranch(s.classId), 'تاریخ ثبت‌نام': toJalali(s.registerDate), 'شهریهٔ جمع‌آوری‌شده': Number(s.paidAmount)||0,
+  }));
+  const costDetail = taxCostExpenses().map(e=>({
+    'شعبه': e.branch||'', 'دسته': e.category, 'مبلغ': Number(e.amount)||0, 'تاریخ': toJalali(e.date), 'توضیحات': e.note||'',
+  }));
+  downloadWorkbookFromRows({
+    'خلاصه': summary, 'تفکیک ماهانه': monthlyRows, 'به تفکیک شعبه': branchRows,
+    'جزئیات شهریه': feeDetail, 'جزئیات هزینه': costDetail,
+  }, 'tax-report-fees');
+}
+
 /* Initial paint (loaded after app.js) */
 if (typeof renderMyIncome === 'function') renderMyIncome();
 if (typeof renderAssets === 'function') renderAssets();
+if (typeof renderTaxReport === 'function') renderTaxReport();
