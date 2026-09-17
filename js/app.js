@@ -83,6 +83,8 @@ const VIEW_TITLES = {
   shareholders: { title: 'سهامداران', sub: 'مدیریت سهامداران و فرمول تقسیم سود مؤسسه' },
   activityLog: { title: 'گزارش فعالیت‌ها', sub: 'تاریخچه و لاگ تغییرات اطلاعات سیستم' },
   discountCodes: { title: 'کدهای تخفیف مکاتب', sub: 'مدیریت کدهای تخفیف توزیع‌شده در مکاتب، کمیشن مدیران و وضعیت استفاده' },
+  myIncome: { title: 'درآمد من', sub: 'درآمد شما از هر صنف و مجموع صنف‌ها، و حقوق پرداخت‌شده به شما' },
+  assets: { title: 'دارایی‌های هدف', sub: 'ثبت و مدیریت دارایی‌های آموزشگاه هدف (ویژهٔ سهامداران)' },
   settings: { title: 'تنظیمات سامانه', sub: 'پشتیبان‌گیری، بازگردانی و تنظیمات تخفیف' }
 };
 
@@ -92,7 +94,7 @@ let db = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
 if(!db){
   db = window.HADAF_SEED;
 }
-['classes','students','teachers','donations','expenses','projects','meetings','seminars','teacherAdvances','studentProfiles','shareholders','bookPurchases','attendance','activityLog','discountCodes'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+['classes','students','teachers','donations','expenses','projects','meetings','seminars','teacherAdvances','studentProfiles','shareholders','bookPurchases','attendance','activityLog','discountCodes','assets'].forEach(k=>{ if(!db[k]) db[k]=[]; });
 if(!db.accessPins) db.accessPins = { shareholder:'4545', manager:'2026', teacher:'1010' };
 if(!db.referralSettings) db.referralSettings = { referrerDiscount:5, refereeDiscount:10 };
 if(!db.discountCodeSettings) db.discountCodeSettings = { defaultDiscount:10, defaultCommission:5 };
@@ -148,9 +150,10 @@ function migrateLegacyData(){
   });
   if(!db.shareholders.length){
     const sh = [
-      { name:'Mohammad Hanif Mahdiyar', sharePercent:45 },
-      { name:'Alireza Elham', sharePercent:45 },
+      { name:'Mohammad Hanif Mahdiyar', sharePercent:40 },
+      { name:'Ali Hussain Elham', sharePercent:40 },
       { name:'Habibullah Kakar', sharePercent:10 },
+      { name:'مشتاق میرزایی', sharePercent:10 },
     ];
     sh.forEach(x=>{
       db.shareholders.push({
@@ -163,6 +166,23 @@ function migrateLegacyData(){
   db.shareholders.forEach(sh=>{
     if(!sh.password){ sh.password = generateUniquePassword(); changed = true; migrationGeneratedPasswords.push({name:sh.name, code:sh.code, role:'سهامدار', password:sh.password}); }
   });
+  // One-time 2026 shareholder restructure: rename, re-weight shares, add new partner
+  if(!db.shareholderRestructure2026){
+    const ali = db.shareholders.find(s=> s.name==='Alireza Elham');
+    if(ali){ ali.name = 'Ali Hussain Elham'; }
+    const setShare = (name, pct)=>{ const s = db.shareholders.find(x=>x.name===name); if(s) s.sharePercent = pct; };
+    setShare('Mohammad Hanif Mahdiyar', 40);
+    setShare('Ali Hussain Elham', 40);
+    setShare('Habibullah Kakar', 10);
+    if(!db.shareholders.some(s=> s.name==='مشتاق میرزایی')){
+      const pwd = generateUniquePassword();
+      const rec = { id: uid(), code: generateShareholderCode(todayISO()), name:'مشتاق میرزایی', sharePercent:10, phone:'', photo:'', idPhoto:'', password: pwd, note:'', createdAt: todayISO() };
+      db.shareholders.push(rec);
+      migrationGeneratedPasswords.push({name:rec.name, code:rec.code, role:'سهامدار', password:pwd});
+    }
+    db.shareholderRestructure2026 = true;
+    changed = true;
+  }
   if(!db.bookPurchases.length){
     const samples = [
       { title:'General English Coursebook 1', source:'مطبعهٔ آریانا', branch:BRANCHES[0], quantity:30, unitCost:250, paidRatio:1 },
@@ -206,7 +226,7 @@ function importBackup(input){
   reader.onload = e=>{
     try{
       const parsed = JSON.parse(e.target.result);
-      db = Object.assign({ classes:[], students:[], teachers:[], donations:[], expenses:[], projects:[], meetings:[], seminars:[], teacherAdvances:[], studentProfiles:[], shareholders:[], bookPurchases:[], attendance:[], activityLog:[], discountCodes:[], accessPins:{shareholder:'4545',manager:'2026',teacher:'1010'}, referralSettings:{referrerDiscount:5, refereeDiscount:10}, discountCodeSettings:{defaultDiscount:10, defaultCommission:5} }, parsed);
+      db = Object.assign({ classes:[], students:[], teachers:[], donations:[], expenses:[], projects:[], meetings:[], seminars:[], teacherAdvances:[], studentProfiles:[], shareholders:[], bookPurchases:[], attendance:[], activityLog:[], discountCodes:[], assets:[], accessPins:{shareholder:'4545',manager:'2026',teacher:'1010'}, referralSettings:{referrerDiscount:5, refereeDiscount:10}, discountCodeSettings:{defaultDiscount:10, defaultCommission:5} }, parsed);
       save();
       alert('بازگردانی با موفقیت انجام شد.');
     }catch(err){
@@ -392,9 +412,10 @@ let currentRole = sessionStorage.getItem('hadaf_role') || '';
 let currentTeacherId = sessionStorage.getItem('hadaf_teacher_id') || '';
 let currentActorName = sessionStorage.getItem('hadaf_actor_name') || '';
 function navAllowed(view){
+  if(view==='myIncome') return currentRole==='teacher'; // personal income page — teachers only
   if(currentRole==='shareholder') return true;
-  if(currentRole==='manager') return view!=='shareholders' && view!=='activityLog';
-  if(currentRole==='teacher') return view==='classes' || view==='attendance';
+  if(currentRole==='manager') return view!=='shareholders' && view!=='activityLog' && view!=='assets';
+  if(currentRole==='teacher') return view==='classes' || view==='attendance' || view==='myIncome';
   if(currentRole==='employee') return view==='classes' || view==='students' || view==='seminars' || view==='books' || view==='discountCodes';
   return false;
 }
@@ -635,6 +656,8 @@ function switchView(name, updateHash = true){
   if(name==='classes') renderClasses();
   if(name==='attendance') renderAttendanceClassOptions();
   if(name==='discountCodes' && typeof renderDiscountCodes==='function') renderDiscountCodes();
+  if(name==='myIncome' && typeof renderMyIncome==='function') renderMyIncome();
+  if(name==='assets' && typeof renderAssets==='function') renderAssets();
 }
 
 // Handle Browser Back / Forward buttons & Hash navigation
@@ -1515,19 +1538,41 @@ function openTeacherModal(id){
 
     <div class="sectiontitle">حقوق و دستمزد</div>
     <div class="field-row">
-      <div class="field"><label>نوع پرداخت</label><select id="f-t-paytype">
+      <div class="field"><label>نوع پرداخت</label><select id="f-t-paytype" onchange="updateTeacherPayField()">
         <option value="به ازای هر صنف (ماهانه)" ${!t||t.payType==='به ازای هر صنف (ماهانه)'?'selected':''}>به ازای هر صنف (ماهانه)</option>
         <option value="ماهانه ثابت" ${t&&t.payType==='ماهانه ثابت'?'selected':''}>ماهانه ثابت</option>
+        <option value="درصد شهریه" ${t&&t.payType==='درصد شهریه'?'selected':''}>درصد شهریهٔ جمع‌آوری‌شده</option>
       </select></div>
-      <div class="field"><label>مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${t&&t.payAmount?numFmt(t.payAmount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+      <div class="field"><label id="f-t-payamount-label">مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${t&&t.payAmount?numFmt(t.payAmount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     </div>
-    <p class="hint" style="margin:-6px 0 12px;">در حالت «به ازای هر صنف»، این مبلغ به ازای هر صنفی که مدرس در یک ماه داشته باشد پرداخت می‌شود (هر صنف ۶ روز در هفته، شنبه تا پنج‌شنبه، هر جلسه ۶۰ دقیقه، و هر دوره در حدود یک ماه به پایان می‌رسد).</p>
+    <p class="hint" id="f-t-pay-hint" style="margin:-6px 0 12px;"></p>
     <div class="field"><label>توضیحات</label><input id="f-t-note" value="${t?t.note||'':''}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveTeacher(${t?`'${t.id}'`:'null'})">ذخیره</button>
     </div>
   `);
+  updateTeacherPayField();
+}
+function updateTeacherPayField(){
+  const sel = document.getElementById('f-t-paytype');
+  const label = document.getElementById('f-t-payamount-label');
+  const hint = document.getElementById('f-t-pay-hint');
+  const input = document.getElementById('f-t-payamount');
+  if(!sel || !label || !hint || !input) return;
+  if(sel.value==='درصد شهریه'){
+    label.textContent = 'درصد (٪)';
+    input.placeholder = 'مثلاً: ۲۰';
+    hint.textContent = 'در این حالت، حقوق هر ماه برابر است با این درصد از مجموع شهریه‌های جمع‌آوری‌شدهٔ (پرداخت‌شدهٔ) صنف‌های این مدرس در همان ماه. مثلاً ۲۰ یعنی ۲۰٪ از شهریهٔ دریافتی صنف‌های او.';
+  } else if(sel.value==='ماهانه ثابت'){
+    label.textContent = 'مبلغ (افغانی)';
+    input.placeholder = '۰';
+    hint.textContent = 'مبلغ ثابت ماهانه، مستقل از تعداد صنف‌ها.';
+  } else {
+    label.textContent = 'مبلغ (افغانی)';
+    input.placeholder = '۰';
+    hint.textContent = 'در حالت «به ازای هر صنف»، این مبلغ به ازای هر صنفی که مدرس در یک ماه داشته باشد پرداخت می‌شود (هر صنف ۶ روز در هفته، شنبه تا پنج‌شنبه، هر جلسه ۶۰ دقیقه، و هر دوره در حدود یک ماه به پایان می‌رسد).';
+  }
 }
 function saveTeacher(id){
   const existing = id ? db.teachers.find(x=>x.id===id) : null;
@@ -1633,6 +1678,8 @@ function openTeacherProfileModal(teacherId){
       <tbody>${classRows}</tbody>
     </table></div>
 
+    ${typeof teacherIncomeHtml==='function' ? teacherIncomeHtml(t) : ''}
+
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">بستن</button>
       <button class="btn" onclick="closeModal(); openTeacherModal('${t.id}');">ویرایش اطلاعات</button>
@@ -1655,8 +1702,21 @@ function dateInMonth(dateStr, y, m){
 function teacherClassCountInMonth(teacherId, y, m){
   return db.classes.filter(c=>c.teacherId===teacherId && dateInMonth(c.startDate, y, m)).length;
 }
+/* Fees actually collected (paid) for a class — total, or within a given Gregorian month (by registerDate) */
+function classFeesCollected(classId){
+  return db.students.filter(s=>s.classId===classId).reduce((sum,s)=>sum+(Number(s.paidAmount)||0),0);
+}
+function classFeesCollectedInMonth(classId, y, m){
+  return db.students.filter(s=>s.classId===classId && dateInMonth(s.registerDate, y, m)).reduce((sum,s)=>sum+(Number(s.paidAmount)||0),0);
+}
+const PAY_TYPES = ['به ازای هر صنف (ماهانه)', 'ماهانه ثابت', 'درصد شهریه'];
 function teacherGrossSalary(t, y, m){
   if(t.payType==='ماهانه ثابت') return Number(t.payAmount)||0;
+  if(t.payType==='درصد شهریه'){
+    const pct = Number(t.payAmount)||0;
+    const collected = teacherClassesList(t.id).reduce((s,c)=> s + classFeesCollectedInMonth(c.id, y, m), 0);
+    return Math.round(collected * pct / 100);
+  }
   return (Number(t.payAmount)||0) * teacherClassCountInMonth(t.id, y, m);
 }
 function teacherAdvanceBalance(teacherId){
@@ -1715,6 +1775,8 @@ function paySalary(teacherId){
   db.expenses.unshift({
     id: uid(), branch: BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
     note: `حقوق ${t.name} · ${toJalali(todayISO())}`,
+    teacherId: teacherId, salaryGross: gross, salaryAdvance: advance,
+    salaryPeriodY: now.getFullYear(), salaryPeriodM: now.getMonth(),
   });
   db.teacherAdvances.forEach(a=>{ if(a.teacherId===teacherId && !a.settled) a.settled = true; });
   logAction('پرداخت حقوق', 'پرسنل', `${t.name} · خالص ${afn(net)}`);
@@ -1973,7 +2035,10 @@ document.getElementById('classes-filters').addEventListener('click', e=>{
   renderClasses();
 });
 function renderClasses(){
-  const fullList = classBranchFilter==='all' ? db.classes : db.classes.filter(c=>c.branch===classBranchFilter);
+  let source = db.classes;
+  // Teachers see only their own classes (across all branches); others see all
+  if(currentRole==='teacher') source = source.filter(c=>c.teacherId===currentTeacherId);
+  const fullList = classBranchFilter==='all' ? source : source.filter(c=>c.branch===classBranchFilter);
   const { pageItems: list, totalPages } = paginateList('classes', fullList);
   document.getElementById('classes-empty').style.display = fullList.length? 'none':'block';
   document.getElementById('classes-table').innerHTML = list.map(c=>{
@@ -2100,7 +2165,7 @@ function renderTeachers(){
   document.getElementById('teachers-table').innerHTML = pageItems.map(t=>{
     const classes = teacherClassesList(t.id);
     const names = classes.map(c=>c.name||c.category).join('، ') || '-';
-    const payLabel = t.payAmount ? `${afn(t.payAmount)} <span style="color:var(--text-faint);">(${t.payType||'-'})</span>` : '-';
+    const payLabel = t.payAmount ? `${t.payType==='درصد شهریه' ? faDigits(t.payAmount)+'٪' : afn(t.payAmount)} <span style="color:var(--text-faint);">(${t.payType||'-'})</span>` : '-';
     return `<tr>
       <td><span class="code-badge" onclick="openTeacherProfileModal('${t.id}')">${t.code||'-'}</span></td>
       <td>${t.name}</td><td><span class="tag info">${t.role||'مدرس'}</span></td><td>${t.phone||'-'}</td><td>${t.subjects||'-'}</td><td class="num">${payLabel}</td>
@@ -2121,7 +2186,7 @@ function renderTeacherAdvances(){
 
   document.getElementById('payroll-empty').style.display = db.teachers.length? 'none':'block';
   document.getElementById('payroll-table').innerHTML = db.teachers.map(t=>{
-    const cnt = t.payType==='ماهانه ثابت' ? '-' : faDigits(teacherClassCountInMonth(t.id, y, m));
+    const cnt = (t.payType==='ماهانه ثابت'||t.payType==='درصد شهریه') ? '-' : faDigits(teacherClassCountInMonth(t.id, y, m));
     const gross = teacherGrossSalary(t, y, m);
     const advBal = teacherAdvanceBalance(t.id);
     const net = teacherNetSalary(t, y, m);
@@ -2885,6 +2950,8 @@ function renderAll(){
   renderProjects(); renderMeetings(); renderTeacherAdvances(); renderReport(); renderMonthlyTrend();
   renderBooks(); renderShareholders(); renderSettingsPins(); renderActivityLog();
   if(typeof renderDiscountCodes==='function') renderDiscountCodes();
+  if(typeof renderMyIncome==='function') renderMyIncome();
+  if(typeof renderAssets==='function') renderAssets();
   if(document.getElementById('att-class-select') && document.getElementById('att-class-select').value) renderAttendanceGrid();
 }
 renderReportFilterChips();
