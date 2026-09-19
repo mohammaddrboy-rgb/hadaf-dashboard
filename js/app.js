@@ -49,7 +49,7 @@ function switchGateTab(role) {
     t.classList.toggle('active', isActive);
     t.setAttribute('aria-selected', isActive ? 'true' : 'false');
   });
-  ['shareholder', 'manager', 'teacher', 'employee'].forEach(r => {
+  ['shareholder', 'manager', 'teacher', 'employee', 'student'].forEach(r => {
     const el = document.getElementById('gate-role-' + r);
     if (el) el.style.display = (r === role ? 'flex' : 'none');
     const err = document.getElementById('gate-error-' + r);
@@ -86,6 +86,8 @@ const VIEW_TITLES = {
   myIncome: { title: 'درآمد من', sub: 'حقوق و درآمد شما، مالیات کسرشده و پرداخت‌های انجام‌شده' },
   assets: { title: 'دارایی‌های هدف', sub: 'ثبت و مدیریت دارایی‌های آموزشگاه هدف (ویژهٔ سهامداران)' },
   taxReport: { title: 'گزارش مالیاتی (شهریه)', sub: 'گزارش نقدی درآمد شهریه و هزینه‌های مرتبط برای ادارهٔ مالیات (ویژهٔ سهامداران)' },
+  teacherDiscipline: { title: 'انضباط پرسنل', sub: 'حضور، ناوقت و غیرحاضری مدرسان و پرسنل (ویژهٔ سهامداران و مدیران شعبه)' },
+  studentSelf: { title: 'پروندهٔ من', sub: 'اطلاعات، نمرات، حضور و غیاب و فعالیت شما' },
   settings: { title: 'تنظیمات سامانه', sub: 'پشتیبان‌گیری، بازگردانی و تنظیمات تخفیف' }
 };
 
@@ -95,7 +97,7 @@ let db = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
 if(!db){
   db = window.HADAF_SEED;
 }
-['classes','students','teachers','donations','expenses','projects','meetings','seminars','teacherAdvances','studentProfiles','shareholders','bookPurchases','attendance','activityLog','discountCodes','assets'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+['classes','students','teachers','donations','expenses','projects','meetings','seminars','teacherAdvances','studentProfiles','shareholders','bookPurchases','attendance','activityLog','discountCodes','assets','teacherAttendance','advanceRequests'].forEach(k=>{ if(!db[k]) db[k]=[]; });
 if(!db.accessPins) db.accessPins = { shareholder:'4545', manager:'2026', teacher:'1010' };
 if(!db.referralSettings) db.referralSettings = { referrerDiscount:5, refereeDiscount:10 };
 if(!db.discountCodeSettings) db.discountCodeSettings = { defaultDiscount:10, defaultCommission:5 };
@@ -117,6 +119,7 @@ function migrateLegacyData(){
     if(t.idPhoto===undefined){ t.idPhoto=''; changed=true; }
     if(t.contractStart===undefined){ t.contractStart = t.createdAt||''; changed=true; }
     if(t.contractEnd===undefined){ t.contractEnd=''; changed=true; }
+    if(t.canRequestAdvance===undefined){ t.canRequestAdvance=false; changed=true; }
     if(!t.password){ t.password = generateUniquePassword(); changed=true; migrationGeneratedPasswords.push({name:t.name, code:t.code, role:t.role, password:t.password}); }
   });
   db.students.forEach(s=>{
@@ -133,6 +136,7 @@ function migrateLegacyData(){
     }
     if(s.result===undefined){ s.result=''; changed=true; }
     if(s.activityScore===undefined){ s.activityScore=''; changed=true; }
+    if(s.midtermScore===undefined){ s.midtermScore=''; changed=true; }
     if(s.examScore===undefined){ s.examScore=''; changed=true; }
     if(s.bookTitle===undefined){ s.bookTitle=''; s.bookPrice=0; s.bookPaid=false; changed=true; }
     if(s.idCardPrice===undefined){ s.idCardPrice=0; s.idCardPaid=false; changed=true; }
@@ -144,6 +148,7 @@ function migrateLegacyData(){
   });
   db.studentProfiles.forEach(p=>{
     if(p.familyId===undefined){ p.familyId=''; changed=true; }
+    if(p.password===undefined || p.password===''){ p.password = studentLoginPassword(p); changed=true; }
   });
   db.bookPurchases.forEach(b=>{
     if(b.paidAmount===undefined){ b.paidAmount=0; changed=true; }
@@ -390,6 +395,12 @@ function generateUniquePassword(){
   do { pwd = String(Math.floor(100000 + Math.random()*900000)); } while(used.has(pwd));
   return pwd;
 }
+/* Student login password: their guardian phone if available, else a random 6-digit */
+function studentLoginPassword(p){
+  const phone = ((p && p.guardianPhone) || '').replace(/[^\d]/g,'');
+  if(phone.length>=4) return phone;
+  return String(Math.floor(100000 + Math.random()*900000));
+}
 function regeneratePersonnelPassword(teacherId){
   const t = db.teachers.find(x=>x.id===teacherId); if(!t) return;
   if(!confirm(`رمز عبور فعلی «${t.name}» غیرفعال شده و رمز جدیدی ساخته می‌شود. ادامه می‌دهید؟`)) return;
@@ -415,11 +426,14 @@ function readImageAsDataURL(inputEl, onDone){
 }
 
 /* ---------------- Access control (client-side gate · see settings note) ---------------- */
-const ROLE_LABELS = { shareholder:'سهامدار', manager:'مدیر شعبه', teacher:'مدرس', employee:'کارمند' };
+const ROLE_LABELS = { shareholder:'سهامدار', manager:'مدیر شعبه', teacher:'مدرس', employee:'کارمند', student:'شاگرد' };
 let currentRole = sessionStorage.getItem('hadaf_role') || '';
 let currentTeacherId = sessionStorage.getItem('hadaf_teacher_id') || '';
+let currentStudentId = sessionStorage.getItem('hadaf_student_id') || '';
 let currentActorName = sessionStorage.getItem('hadaf_actor_name') || '';
 function navAllowed(view){
+  if(view==='studentSelf') return currentRole==='student'; // students only see their own profile
+  if(currentRole==='student') return view==='studentSelf';
   if(view==='myIncome') return currentRole==='teacher' || currentRole==='manager' || currentRole==='employee'; // personal income/salary page for all personnel
   if(currentRole==='shareholder') return true;
   if(currentRole==='manager') return view!=='shareholders' && view!=='activityLog' && view!=='assets' && view!=='taxReport';
@@ -503,6 +517,17 @@ function attemptLogin(role){
     currentTeacherId = eid;
     sessionStorage.setItem('hadaf_teacher_id', eid);
     actorName = e.name;
+  } else if(role==='student'){
+    const codeEl = document.getElementById('gate-student-code');
+    const code = codeEl ? codeEl.value.trim() : '';
+    if(!code){ showError('کد شاگرد (نام کاربری) را وارد کنید.'); return; }
+    const prof = db.studentProfiles.find(p=> (p.code||'').toLowerCase()===code.toLowerCase());
+    if(!prof){ showError('کد شاگرد یافت نشد.'); return; }
+    realPassword = prof.password || '';
+    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
+    currentStudentId = prof.id;
+    sessionStorage.setItem('hadaf_student_id', prof.id);
+    actorName = prof.name;
   }
   currentRole = role;
   currentActorName = actorName;
@@ -514,15 +539,15 @@ function attemptLogin(role){
 
   // Navigate to hash view if valid for this role, else default role view
   const hash = window.location.hash.replace(/^#\/?/, '');
-  const defaultView = role==='teacher' ? 'classes' : role==='employee' ? 'students' : 'dashboard';
+  const defaultView = role==='teacher' ? 'classes' : role==='employee' ? 'students' : role==='student' ? 'studentSelf' : 'dashboard';
   const targetView = (hash && VIEW_TITLES[hash] && navAllowed(hash)) ? hash : defaultView;
   switchView(targetView, true);
 }
 
 function logoutRole(){
   if(currentRole) logAction('خروج', 'نشست', `${ROLE_LABELS[currentRole]} · ${currentActorName}`);
-  sessionStorage.removeItem('hadaf_role'); sessionStorage.removeItem('hadaf_teacher_id'); sessionStorage.removeItem('hadaf_actor_name');
-  currentRole=''; currentTeacherId=''; currentActorName='';
+  sessionStorage.removeItem('hadaf_role'); sessionStorage.removeItem('hadaf_teacher_id'); sessionStorage.removeItem('hadaf_student_id'); sessionStorage.removeItem('hadaf_actor_name');
+  currentRole=''; currentTeacherId=''; currentStudentId=''; currentActorName='';
   showAccessGate();
   renderQuickLoginCards();
   renderGateAllPasswords();
@@ -671,6 +696,8 @@ function switchView(name, updateHash = true){
   if(name==='myIncome' && typeof renderMyIncome==='function') renderMyIncome();
   if(name==='assets' && typeof renderAssets==='function') renderAssets();
   if(name==='taxReport' && typeof renderTaxReport==='function') renderTaxReport();
+  if(name==='teacherDiscipline' && typeof renderTeacherDiscipline==='function') renderTeacherDiscipline();
+  if(name==='studentSelf' && typeof renderStudentSelf==='function') renderStudentSelf();
 }
 
 // Handle Browser Back / Forward buttons & Hash navigation
@@ -791,7 +818,7 @@ function studentsToRows(list){
     'پرداخت‌شده (افغانی)': s.paidAmount||0, 'باقیمانده (افغانی)': studentRemaining(s), 'وضعیت': studentStatus(s),
     'کتاب': s.bookTitle||'', 'قیمت کتاب (افغانی)': s.bookPrice||0, 'کتاب پرداخت‌شده': s.bookPaid?'بله':'خیر',
     'قیمت کارت شاگردی (افغانی)': s.idCardPrice||0, 'کارت پرداخت‌شده': s.idCardPaid?'بله':'خیر',
-    'نمرهٔ فعالیت صنفی': s.activityScore===''?'':s.activityScore, 'نمرهٔ امتحان': s.examScore===''?'':s.examScore,
+    'نمرهٔ فعالیت صنفی': s.activityScore===''?'':s.activityScore, 'نمرهٔ میان‌ترم': s.midtermScore===''||s.midtermScore===undefined?'':s.midtermScore, 'نمرهٔ فاینل': s.examScore===''?'':s.examScore,
     'نتیجه': s.result||'در حال آموزش', 'توضیحات': s.note||'',
   }));
 }
@@ -1312,7 +1339,8 @@ function openStudentModal(id){
     <div class="sectiontitle">نمرات و نتیجه</div>
     <div class="field-row">
       <div class="field"><label>نمرهٔ فعالیت صنفی (از ۱۰۰)</label><input id="f-st-activity" type="number" min="0" max="100" value="${s?s.activityScore||'':''}"></div>
-      <div class="field"><label>نمرهٔ امتحان (از ۱۰۰)</label><input id="f-st-exam" type="number" min="0" max="100" value="${s?s.examScore||'':''}"></div>
+      <div class="field"><label>نمرهٔ امتحان میان‌ترم (از ۱۰۰)</label><input id="f-st-midterm" type="number" min="0" max="100" value="${s?s.midtermScore||'':''}"></div>
+      <div class="field"><label>نمرهٔ امتحان فاینل (از ۱۰۰)</label><input id="f-st-exam" type="number" min="0" max="100" value="${s?s.examScore||'':''}"></div>
     </div>
     <div class="field"><label>نتیجهٔ صنف</label><select id="f-st-result">${resultOptionsHtml(s?s.result:'')}</select></div>
     <p class="hint" style="margin:-6px 0 12px;">«کامیاب مشروط» برای شاگردانی است که با شرایطی مانند امتحان مجدد (ری‌تیک) اجازهٔ رفتن به سطح بعدی را دارند.</p>
@@ -1381,6 +1409,7 @@ function saveStudent(id){
         guardianPhone: document.getElementById('f-st-phone').value.trim(),
         photo: pendingStudentPhoto || '', idPhoto: pendingStudentIdPhoto || '', note: '', createdAt: regDate,
       };
+      newProfile.password = studentLoginPassword(newProfile);
       db.studentProfiles.unshift(newProfile);
       profileId = newProfile.id;
       pendingStudentPhoto = ''; pendingStudentIdPhoto = '';
@@ -1405,6 +1434,7 @@ function saveStudent(id){
     idCardPrice: moneyNum('f-st-idcard-price'),
     idCardPaid: document.getElementById('f-st-idcard-paid').checked,
     activityScore: document.getElementById('f-st-activity').value ? Number(document.getElementById('f-st-activity').value) : '',
+    midtermScore: document.getElementById('f-st-midterm') && document.getElementById('f-st-midterm').value ? Number(document.getElementById('f-st-midterm').value) : '',
     examScore: document.getElementById('f-st-exam').value ? Number(document.getElementById('f-st-exam').value) : '',
     result: document.getElementById('f-st-result').value,
     note: document.getElementById('f-st-note').value.trim(),
@@ -1466,13 +1496,15 @@ function openStudentProfileModal(profileId){
       <td class="num">${afn(studentNetFee(s))}</td><td class="num">${afn(studentRemaining(s))}</td>
       <td class="num">${faDigits(att.present)}</td><td class="num">${faDigits(att.absent)}</td>
       <td class="num">${s.activityScore!==''&&s.activityScore!==undefined?faDigits(s.activityScore):'-'}</td>
+      <td class="num">${s.midtermScore!==''&&s.midtermScore!==undefined?faDigits(s.midtermScore):'-'}</td>
       <td class="num">${s.examScore!==''&&s.examScore!==undefined?faDigits(s.examScore):'-'}</td>
+      <td class="num">${(function(){ const pt = (typeof studentParticipationTotals==='function')?studentParticipationTotals(s.classId,s.id):{plus:0,minus:0}; return `<span style="color:var(--income);">+${faDigits(pt.plus)}</span> / <span style="color:var(--cost);">−${faDigits(pt.minus)}</span>`; })()}</td>
       <td>${s.bookTitle?`${s.bookTitle} <span class="tag ${s.bookPaid?'income':'cost'}" style="margin-right:4px;">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${s.result ? `<span class="tag ${resultTagClass(s.result)}">${s.result}</span>` : '<span class="tag info">در حال آموزش</span>'}</td>
     </tr>
   `;
-  }).join('') : `<tr><td colspan="13" class="empty">هنوز در صنفی ثبت‌نام نشده.</td></tr>`;
+  }).join('') : `<tr><td colspan="16" class="empty">هنوز در صنفی ثبت‌نام نشده.</td></tr>`;
 
   const referredByEnrollment = rows.find(s=>s.referredBy);
   const referrerProfile = referredByEnrollment ? profileById(referredByEnrollment.referredBy) : null;
@@ -1511,7 +1543,7 @@ function openStudentProfileModal(profileId){
 
     <div class="sectiontitle">سابقهٔ صنف‌ها، نمرات و نتیجه</div>
     <div class="table-scroll"><table>
-      <thead><tr><th>صنف</th><th>شعبه</th><th>تاریخ ثبت‌نام</th><th>وضعیت صنف</th><th>تخفیف</th><th>شهریهٔ نهایی</th><th>باقیمانده</th><th>حاضر</th><th>غایب</th><th>فعالیت صنفی</th><th>نمرهٔ امتحان</th><th>کتاب</th><th>کارت شاگردی</th><th>نتیجه</th></tr></thead>
+      <thead><tr><th>صنف</th><th>شعبه</th><th>تاریخ ثبت‌نام</th><th>وضعیت صنف</th><th>تخفیف</th><th>شهریهٔ نهایی</th><th>باقیمانده</th><th>حاضر</th><th>غایب</th><th class="num">فعالیت صنفی</th><th class="num">میان‌ترم</th><th class="num">فاینل</th><th>فعالیت روزانه (+/−)</th><th>کتاب</th><th>کارت شاگردی</th><th>نتیجه</th></tr></thead>
       <tbody>${historyRows}</tbody>
     </table></div>
 
@@ -1683,6 +1715,7 @@ function openTeacherProfileModal(teacherId){
     <h3>پروندهٔ پرسنل</h3>
     <p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'-'}</span> · نقش: ${t.role||'مدرس'}</p>
     ${passwordBlock}
+    ${typeof teacherAdvanceAdminHtml==='function' ? teacherAdvanceAdminHtml(t) : ''}
     <div class="profile-grid">
       <div class="upload-box">
         <label>عکس پرسنل</label>
@@ -2786,43 +2819,123 @@ function syncAttendanceButtonUI(){
   if(btn) btn.disabled = !attendanceDirty;
   if(badge) badge.style.display = attendanceDirty ? 'inline' : 'none';
 }
+let attendanceMode = 'attendance'; // 'attendance' | 'activity'
+function setAttendanceMode(mode){
+  if(attendanceDirty) commitAttendanceSave(true, attendanceActiveClassId);
+  attendanceMode = mode;
+  const a=document.getElementById('att-mode-attendance'), b=document.getElementById('att-mode-activity');
+  if(a) a.classList.toggle('active', mode==='attendance');
+  if(b) b.classList.toggle('active', mode==='activity');
+  renderAttendanceGrid();
+}
+function studentParticipationTotals(classId, enrollmentId){
+  let plus=0, minus=0;
+  db.attendance.filter(a=>a.classId===classId && a.part).forEach(r=>{
+    const v = r.part[enrollmentId];
+    if(v==='+') plus++; else if(v==='-') minus++;
+  });
+  return { plus, minus };
+}
+let marksRenderedClassId = null;
+function renderClassMarks(classId, enrolled, force){
+  const wrap = document.getElementById('att-marks-wrap'); if(!wrap) return;
+  if(!force && marksRenderedClassId===classId && wrap.innerHTML) return; // keep unsaved edits on re-render
+  enrolled = enrolled || db.students.filter(s=>s.classId===classId);
+  const val = v => (v!=='' && v!==undefined && v!==null) ? v : '';
+  const rows = enrolled.map(s=>`
+    <tr>
+      <td>${profileName(s.profileId)}</td>
+      <td><input type="number" min="0" max="100" id="mk-act__${s.id}" value="${val(s.activityScore)}" style="width:82px;"></td>
+      <td><input type="number" min="0" max="100" id="mk-mid__${s.id}" value="${val(s.midtermScore)}" style="width:82px;"></td>
+      <td><input type="number" min="0" max="100" id="mk-fin__${s.id}" value="${val(s.examScore)}" style="width:82px;"></td>
+    </tr>`).join('');
+  wrap.innerHTML = `<div class="table-scroll"><table><thead><tr><th>شاگرد</th><th>فعالیت صنفی</th><th>میان‌ترم</th><th>فاینل</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  marksRenderedClassId = classId;
+}
+function saveClassMarks(){
+  const classId = attendanceActiveClassId || document.getElementById('att-class-select').value;
+  if(!classId) return;
+  const enrolled = db.students.filter(s=>s.classId===classId);
+  enrolled.forEach(s=>{
+    const a=document.getElementById('mk-act__'+s.id), m=document.getElementById('mk-mid__'+s.id), f=document.getElementById('mk-fin__'+s.id);
+    if(a) s.activityScore = a.value!=='' ? Number(a.value) : '';
+    if(m) s.midtermScore = m.value!=='' ? Number(m.value) : '';
+    if(f) s.examScore = f.value!=='' ? Number(f.value) : '';
+  });
+  const c = db.classes.find(x=>x.id===classId);
+  logAction('ثبت نمرات', 'صنف', c?(c.name||c.category):'');
+  save();
+  alert('نمرات صنف ذخیره شد.');
+}
 function renderAttendanceGrid(){
   const classId = document.getElementById('att-class-select').value;
   attendanceActiveClassId = classId;
   const wrap = document.getElementById('att-grid-wrap');
   const emptyEl = document.getElementById('attendance-empty');
+  const marksPanel = document.getElementById('att-marks-panel');
   syncAttendanceButtonUI();
-  if(!classId){ wrap.innerHTML=''; emptyEl.style.display='none'; return; }
+  if(!classId){ wrap.innerHTML=''; emptyEl.style.display='none'; if(marksPanel) marksPanel.style.display='none'; return; }
   const c = db.classes.find(x=>x.id===classId);
   const enrolled = db.students.filter(s=>s.classId===classId);
   const dates = classSessionDates(c);
-  if(!c || !enrolled.length || !dates.length){ wrap.innerHTML=''; emptyEl.style.display='block'; return; }
+  if(!c || !enrolled.length || !dates.length){ wrap.innerHTML=''; emptyEl.style.display='block'; if(marksPanel) marksPanel.style.display='none'; return; }
   emptyEl.style.display='none';
+  if(marksPanel){ marksPanel.style.display='block'; renderClassMarks(classId, enrolled); }
 
   const attKey = 'attendance__'+classId;
   const { pageItems: enrolledPage, totalPages } = paginateList(attKey, enrolled);
+  const isAct = attendanceMode==='activity';
 
   const head = `<th style="position:sticky; right:0; background:var(--panel-2); min-width:150px;">شاگرد</th>` +
     dates.map(d=>`<th style="min-width:34px; font-size:10px;">${faDigits(new Date(d+'T00:00:00').getDate())}<br>${AFG_MONTHS[g2jParts(d)[1]-1].slice(0,3)}</th>`).join('') +
-    `<th style="min-width:70px;">حاضر/غایب</th>`;
+    `<th style="min-width:70px;">${isAct?'مثبت/منفی':'حاضر/غایب'}</th>`;
   const rows = enrolledPage.map(s=>{
     const cells = dates.map(d=>{
       const rec = attendanceRecord(classId, d);
+      if(isAct){
+        const mark = rec && rec.part ? rec.part[s.id] : undefined;
+        const symbol = mark==='+' ? '＋' : mark==='-' ? '－' : '·';
+        const color = mark==='+' ? 'var(--income)' : mark==='-' ? 'var(--cost)' : 'var(--text-faint)';
+        return `<td id="${attCellId(classId,d,s.id)}" style="text-align:center; cursor:pointer; color:${color}; font-weight:700;" onclick="cycleActivity('${classId}','${d}','${s.id}')">${symbol}</td>`;
+      }
       const mark = rec ? rec.marks[s.id] : undefined;
       const symbol = mark===true ? '✓' : mark===false ? '✕' : '-';
       const color = mark===true ? 'var(--income)' : mark===false ? 'var(--cost)' : 'var(--text-faint)';
       return `<td id="${attCellId(classId,d,s.id)}" style="text-align:center; cursor:pointer; color:${color}; font-weight:700;" onclick="cycleAttendance('${classId}','${d}','${s.id}')">${symbol}</td>`;
     }).join('');
-    const tot = studentAttendanceTotals(classId, s.id);
-    return `<tr><td style="position:sticky; right:0; background:var(--panel);">${profileName(s.profileId)}</td>${cells}<td class="num" id="att-summary__${classId}__${s.id}">${faDigits(tot.present)} / ${faDigits(tot.absent)}</td></tr>`;
+    let summary;
+    if(isAct){ const p=studentParticipationTotals(classId,s.id); summary=`<span style="color:var(--income);">+${faDigits(p.plus)}</span> / <span style="color:var(--cost);">−${faDigits(p.minus)}</span>`; }
+    else { const t=studentAttendanceTotals(classId,s.id); summary=`${faDigits(t.present)} / ${faDigits(t.absent)}`; }
+    return `<tr><td style="position:sticky; right:0; background:var(--panel);">${profileName(s.profileId)}</td>${cells}<td class="num" id="att-summary__${classId}__${s.id}">${summary}</td></tr>`;
   }).join('');
 
+  const hint = isAct
+    ? 'روی هر خانه کلیک کنید تا بین «·»، «＋ (مثبت)» و «－ (منفی)» تغییر کند (برای مثلاً انجام تکلیف یا پاسخ در صنف)؛ سپس روی «ذخیره» بزنید.'
+    : 'روی هر خانه کلیک کنید تا بین «نامشخص»، «حاضر ✓» و «غایب ✕» تغییر کند؛ در پایان حتماً روی «ذخیره» بزنید.';
   wrap.innerHTML = `
-    <p class="hint" style="margin:10px 0;">روی هر خانه کلیک کنید تا بین «نامشخص»، «حاضر ✓» و «غایب ✕» تغییر کند؛ در پایان حتماً روی «ذخیرهٔ حضور و غیاب» بزنید.</p>
+    <p class="hint" style="margin:10px 0;">${hint}</p>
     <div class="table-scroll"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="pagination" id="att-grid-pagination"></div>
   `;
   renderPaginationControls('att-grid-pagination', attKey, totalPages, 'renderAttendanceGrid');
+}
+function cycleActivity(classId, date, enrollmentId){
+  let rec = attendanceRecord(classId, date);
+  if(!rec){ rec = { classId, date, marks:{} }; db.attendance.push(rec); }
+  if(!rec.part) rec.part = {};
+  const current = rec.part[enrollmentId];
+  const next = current===undefined ? '+' : current==='+' ? '-' : undefined;
+  if(next===undefined) delete rec.part[enrollmentId];
+  else rec.part[enrollmentId] = next;
+  const cell = document.getElementById(attCellId(classId,date,enrollmentId));
+  if(cell){
+    cell.textContent = next==='+' ? '＋' : next==='-' ? '－' : '·';
+    cell.style.color = next==='+' ? 'var(--income)' : next==='-' ? 'var(--cost)' : 'var(--text-faint)';
+  }
+  const p = studentParticipationTotals(classId, enrollmentId);
+  const summaryCell = document.getElementById(`att-summary__${classId}__${enrollmentId}`);
+  if(summaryCell) summaryCell.innerHTML = `<span style="color:var(--income);">+${faDigits(p.plus)}</span> / <span style="color:var(--cost);">−${faDigits(p.minus)}</span>`;
+  setAttendanceDirty(true);
 }
 function cycleAttendance(classId, date, enrollmentId){
   let rec = attendanceRecord(classId, date);
@@ -3040,6 +3153,8 @@ function renderAll(){
   if(typeof renderMyIncome==='function') renderMyIncome();
   if(typeof renderAssets==='function') renderAssets();
   if(typeof renderTaxReport==='function') renderTaxReport();
+  if(typeof renderTeacherDiscipline==='function') renderTeacherDiscipline();
+  if(typeof renderStudentSelf==='function') renderStudentSelf();
   if(document.getElementById('att-class-select') && document.getElementById('att-class-select').value) renderAttendanceGrid();
 }
 renderReportFilterChips();
@@ -3083,14 +3198,14 @@ window.addEventListener('beforeunload', e=>{
     genBox.innerHTML = '<b>رمزهای عبور تازه‌ساخته‌شده برای این داده‌ها (فقط یک‌بار نمایش داده می‌شود، جایی یادداشت کنید):</b><br>' +
       migrationGeneratedPasswords.map(p=>`${p.name} (${p.role}, ${p.code}): <b class="code-badge" style="cursor:default;">${p.password}</b>`).join('<br>');
   }
-  if(currentRole && (currentRole!=='teacher' || currentTeacherId) && currentActorName){
+  if(currentRole && (currentRole!=='teacher' || currentTeacherId) && (currentRole!=='student' || currentStudentId) && currentActorName){
     applyRoleVisibility();
     const hash = window.location.hash.replace(/^#\/?/, '');
-    const defaultView = currentRole==='teacher' ? 'classes' : currentRole==='employee' ? 'students' : 'dashboard';
+    const defaultView = currentRole==='teacher' ? 'classes' : currentRole==='employee' ? 'students' : currentRole==='student' ? 'studentSelf' : 'dashboard';
     const targetView = (hash && VIEW_TITLES[hash] && navAllowed(hash)) ? hash : defaultView;
     switchView(targetView, true);
   } else {
-    currentRole = ''; currentTeacherId=''; currentActorName='';
+    currentRole = ''; currentTeacherId=''; currentStudentId=''; currentActorName='';
     showAccessGate();
     renderQuickLoginCards();
     updateThemeUI(getCurrentTheme());

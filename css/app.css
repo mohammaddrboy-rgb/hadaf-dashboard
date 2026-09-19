@@ -789,6 +789,23 @@ tbody tr:last-child td {
 /* Numeric column headers align with their .num cells */
 thead th.num { text-align: right; }
 
+/* Login-page notifications (changelog) */
+.gate-notifications {
+  margin-top: 16px;
+  text-align: right;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.gate-notifications:empty { display: none; }
+.gate-notif-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.gate-notif-item { font-size: 11.3px; color: var(--text-dim); padding: 4px 0; border-top: 1px solid var(--border-soft); }
+.gate-notif-item:first-of-type { border-top: none; }
+.gate-notif-date { color: var(--brand); font-weight: 700; margin-left: 6px; }
+
 /* Totals row (tfoot) */
 tfoot .totals-row td {
   padding: 11px 12px;

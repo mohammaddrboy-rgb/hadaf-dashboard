@@ -101,9 +101,11 @@ function teacherIncomeHtml(t){
 
     <div class="sectiontitle" style="margin-top:18px;">حقوق پرداخت‌شده به شما</div>
     <div class="table-scroll"><table>
-      <thead><tr><th>تاریخ پرداخت</th><th>مبلغ</th><th>دورهٔ (ماه/سال)</th><th>توضیحات</th></tr></thead>
+      <thead><tr><th>تاریخ پرداخت</th><th class="num">مبلغ</th><th>دورهٔ (ماه/سال)</th><th>توضیحات</th></tr></thead>
       <tbody>${paymentRows}</tbody>
     </table></div>
+    ${typeof teacherDisciplineSummaryHtml==='function' ? teacherDisciplineSummaryHtml(t) : ''}
+    ${typeof teacherAdvanceRequestHtml==='function' ? teacherAdvanceRequestHtml(t) : ''}
   `;
 }
 
