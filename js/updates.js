@@ -386,6 +386,140 @@ function exportTaxReport(){
   }, 'tax-report-fees');
 }
 
+/* ================= Printable student profile ================= *
+ * Opens a clean, print-ready page with the student's details and ALL their
+ * course registrations (current + previous). The registrar can pick the paper
+ * size/orientation before printing.
+ * ------------------------------------------------------------------------- */
+function printStudentProfile(profileId){
+  const p = profileById(profileId); if(!p) return;
+  const rows = profileEnrollments(profileId);
+
+  let totNet=0, totPaid=0, totRemain=0;
+  const bodyRows = rows.length ? rows.map((s,i)=>{
+    const net = studentNetFee(s), paid = Number(s.paidAmount)||0, remain = studentRemaining(s);
+    totNet+=net; totPaid+=paid; totRemain+=remain;
+    const cls = db.classes.find(c=>c.id===s.classId) || {};
+    const book = s.bookTitle ? `${s.bookTitle} (${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'})` : '—';
+    const card = s.idCardPrice ? (s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده') : '—';
+    return `<tr>
+      <td>${faDigits(i+1)}</td>
+      <td>${className(s.classId)}</td>
+      <td>${classBranch(s.classId)}</td>
+      <td>${toJalali(s.registerDate)}</td>
+      <td>${classStatus(cls)}</td>
+      <td>${faDigits(studentTotalDiscountPercent(s))}٪</td>
+      <td>${afn(net)}</td>
+      <td>${afn(paid)}</td>
+      <td>${afn(remain)}</td>
+      <td>${book}</td>
+      <td>${card}</td>
+      <td>${s.result || 'در حال آموزش'}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="12" style="text-align:center; color:#666;">هنوز در صنفی ثبت‌نام نشده است.</td></tr>`;
+
+  const totalsRow = rows.length ? `<tr class="tot">
+    <td colspan="6"><b>مجموع</b></td>
+    <td><b>${afn(totNet)}</b></td>
+    <td><b>${afn(totPaid)}</b></td>
+    <td><b>${afn(totRemain)}</b></td>
+    <td colspan="3"></td>
+  </tr>` : '';
+
+  const photo = p.photo ? `<img class="photo" src="${p.photo}" alt="">` : '';
+  const logo = `${location.origin}/assets/logo.png`;
+  const nowJ = toJalali(todayISO());
+
+  const win = window.open('', '_blank');
+  if(!win){ alert('لطفاً اجازهٔ باز شدن پنجرهٔ چاپ را بدهید.'); return; }
+  win.document.write(`<!doctype html><html dir="rtl" lang="fa"><head><meta charset="utf-8">
+  <title>پروندهٔ شاگرد · ${p.name}</title>
+  <style id="page-style">@page{ size:A4 portrait; margin:12mm; }</style>
+  <style>
+    *{ box-sizing:border-box; }
+    body{ font-family:Tahoma,Arial,sans-serif; color:#111; margin:0; padding:0; background:#fff; }
+    .toolbar{ position:sticky; top:0; background:#f3f3f6; border-bottom:1px solid #ccc; padding:10px 14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:13px; }
+    .toolbar label{ color:#333; }
+    .toolbar select, .toolbar button{ font-family:inherit; font-size:13px; padding:6px 10px; border:1px solid #bbb; border-radius:6px; background:#fff; cursor:pointer; }
+    .toolbar button.print{ background:#4b2fd6; color:#fff; border-color:#4b2fd6; font-weight:bold; }
+    .sheet{ padding:18px 22px; max-width:900px; margin:0 auto; }
+    .head{ display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #4b2fd6; padding-bottom:12px; margin-bottom:14px; gap:12px; }
+    .head .inst{ display:flex; align-items:center; gap:10px; }
+    .head img.logo{ width:46px; height:46px; object-fit:contain; }
+    .head h1{ font-size:18px; margin:0; }
+    .head .meta{ font-size:11px; color:#666; text-align:left; }
+    .info{ display:flex; gap:16px; margin-bottom:16px; }
+    .info .photo{ width:96px; height:96px; object-fit:cover; border:1px solid #ccc; border-radius:8px; }
+    .info table{ border-collapse:collapse; font-size:13px; }
+    .info td{ padding:4px 10px; }
+    .info td.k{ color:#666; }
+    h2.section{ font-size:14px; margin:16px 0 8px; color:#4b2fd6; }
+    table.grid{ width:100%; border-collapse:collapse; font-size:11.5px; }
+    table.grid th, table.grid td{ border:1px solid #ccc; padding:6px 7px; text-align:right; }
+    table.grid thead th{ background:#eee; }
+    table.grid tr.tot td{ background:#f4f4f8; }
+    .foot{ margin-top:26px; display:flex; justify-content:space-between; font-size:12px; color:#333; }
+    .foot .sign{ border-top:1px solid #999; padding-top:6px; width:200px; text-align:center; }
+    @media print{ .toolbar{ display:none; } .sheet{ max-width:none; padding:0; } }
+  </style></head><body>
+  <div class="toolbar">
+    <label>اندازهٔ کاغذ:
+      <select onchange="setSize(this.value)">
+        <option value="A4">A4</option>
+        <option value="A5">A5</option>
+        <option value="A3">A3</option>
+        <option value="Letter">Letter (نامه)</option>
+        <option value="Legal">Legal</option>
+      </select>
+    </label>
+    <label>جهت:
+      <select onchange="setOrient(this.value)">
+        <option value="portrait">عمودی</option>
+        <option value="landscape">افقی</option>
+      </select>
+    </label>
+    <button class="print" onclick="window.print()">چاپ</button>
+    <span style="color:#666; font-size:11px;">اندازه و جهت را انتخاب کنید، سپس «چاپ» را بزنید.</span>
+  </div>
+  <div class="sheet">
+    <div class="head">
+      <div class="inst">
+        <img class="logo" src="${logo}" onerror="this.style.display='none'" alt="">
+        <div><h1>آموزشگاه هدف</h1><div style="font-size:11px;color:#666;">پروندهٔ شاگرد</div></div>
+      </div>
+      <div class="meta">تاریخ چاپ: ${nowJ}<br>کد شاگرد: <b>${p.code||'-'}</b></div>
+    </div>
+    <div class="info">
+      ${photo}
+      <table>
+        <tr><td class="k">نام شاگرد:</td><td><b>${p.name||'-'}</b></td><td class="k">پایه/سن:</td><td>${p.grade||'-'}</td></tr>
+        <tr><td class="k">نام سرپرست:</td><td>${p.guardianName||'-'}</td><td class="k">تماس سرپرست:</td><td>${p.guardianPhone||'-'}</td></tr>
+        <tr><td class="k">تعداد ثبت‌نام‌ها:</td><td>${faDigits(rows.length)}</td><td class="k">توضیحات:</td><td>${p.note||'-'}</td></tr>
+      </table>
+    </div>
+    <h2 class="section">سابقهٔ صنف‌ها و شهریه</h2>
+    <table class="grid">
+      <thead><tr>
+        <th>#</th><th>صنف</th><th>شعبه</th><th>تاریخ ثبت‌نام</th><th>وضعیت</th><th>تخفیف</th>
+        <th>شهریهٔ نهایی</th><th>پرداخت‌شده</th><th>باقیمانده</th><th>کتاب</th><th>کارت</th><th>نتیجه</th>
+      </tr></thead>
+      <tbody>${bodyRows}${totalsRow}</tbody>
+    </table>
+    <div class="foot">
+      <div class="sign">مهر و امضای آموزشگاه</div>
+      <div class="sign">امضای شاگرد/سرپرست</div>
+    </div>
+  </div>
+  <script>
+    var _size='A4', _orient='portrait';
+    function _apply(){ document.getElementById('page-style').textContent='@page{ size:'+_size+' '+_orient+'; margin:12mm; }'; }
+    function setSize(v){ _size=v; _apply(); }
+    function setOrient(v){ _orient=v; _apply(); }
+  <\/script>
+  </body></html>`);
+  win.document.close();
+}
+
 /* Initial paint (loaded after app.js) */
 if (typeof renderMyIncome === 'function') renderMyIncome();
 if (typeof renderAssets === 'function') renderAssets();

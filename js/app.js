@@ -1517,6 +1517,7 @@ function openStudentProfileModal(profileId){
 
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">بستن</button>
+      <button class="btn secondary" onclick="printStudentProfile('${p.id}')">چاپ پرونده</button>
       <button class="btn" onclick="saveStudentProfile('${p.id}')">ذخیرهٔ تغییرات</button>
     </div>
   `, {wide:true});
