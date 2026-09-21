@@ -171,6 +171,7 @@
         </button>
 
         <div class="role-chip">
+          <span id="sync-badge" style="font-size:10.5px; color:var(--text-faint);" title="وضعیت همگام‌سازی با سرور"></span>
           <span>نقش: <b id="role-badge">سهامدار</b></span>
           <button type="button" class="btn ghost small" style="padding:2px 8px; font-size:10.5px;" onclick="logoutRole()">خروج</button>
         </div>
@@ -692,6 +693,15 @@
         <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">توجه: بازگردانی، تمام داده‌های فعلی را با محتوای فایل پشتیبان جایگزین خواهد کرد.</p>
         <input id="restore-file-input" type="file" accept="application/json" onchange="importBackup(this)">
       </div>
+      <div class="panel">
+        <div class="panel-head"><h2>همگام‌سازی با سرور (داده‌های مشترک)</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">داده‌های سامانه روی سرور نگهداری و بین همهٔ دستگاه‌ها به اشتراک گذاشته می‌شود؛ هر تغییری که هر کاربر انجام دهد، برای بقیه هم دیده می‌شود. اگر داده‌های همین مرورگر درست‌تر است و می‌خواهید آن را نسخهٔ مشترک همه کنید، از دکمهٔ زیر استفاده کنید.</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <button type="button" class="btn ghost" onclick="hadafRefreshFromServer()">دریافت مجدد از سرور</button>
+          <button type="button" class="btn" onclick="hadafForceUpload()">بارگذاری داده‌های این مرورگر به سرور</button>
+          <span id="sync-badge-settings" style="font-size:12px; color:var(--text-dim);"></span>
+        </div>
+      </div>
       <div class="panel" id="settings-referral-panel" style="display:none;">
         <div class="panel-head"><h2>درصد تخفیف معرفی شاگرد جدید</h2></div>
         <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">وقتی کد یک شاگرد در ثبت‌نام شاگرد جدید به‌عنوان «کد معرف» استفاده شود، این دو درصد به‌صورت خودکار به شهریهٔ مربوطه افزوده می‌شود. تخفیف خانوادگی (۲۵٪ برای سومین عضو خانواده در یک ماه) ثابت است.</p>
@@ -874,9 +884,10 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="js/seed.js"></script>
-  <script src="js/app.js?v=3.9"></script>
+  <script src="js/app.js?v=4.0"></script>
   <script src="js/discount-codes.js?v=1.0"></script>
   <script src="js/updates.js?v=1.5"></script>
   <script src="js/updates2.js?v=1.0"></script>
+  <script src="js/sync.js?v=1.0"></script>
 </body>
 </html>

@@ -1,3 +1,9 @@
+/* Did this browser already have local dashboard data before this load?
+   Captured before any localStorage write so the sync layer can decide, on the
+   first shared-server join, whether to adopt the server copy or offer to upload
+   this device's copy. */
+window.__hadafHadLocal = (function(){ try { return localStorage.getItem('hadaf_dashboard_v1') != null; } catch(e){ return false; } })();
+
 /* ---------------- Theme & UI Management ---------------- */
 function getCurrentTheme() {
   return document.documentElement.getAttribute('data-theme') || localStorage.getItem('hadaf_theme') || 'dark';
@@ -219,7 +225,7 @@ function migrateLegacyData(){
 }
 let migrationGeneratedPasswords = [];
 migrateLegacyData();
-function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(db)); renderAll(); }
+function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }catch(e){} if(typeof scheduleServerPush==='function') scheduleServerPush(); renderAll(); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 /* ---------------- Backup / Restore ---------------- */
@@ -3169,7 +3175,7 @@ window.addEventListener('beforeunload', e=>{
 });
 
 /* ---------------- Access gate bootstrap ---------------- */
-(function initAccessGate(){
+function populateGateSelects(){
   const sel = document.getElementById('gate-teacher-select');
   if(sel){
     sel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
@@ -3192,6 +3198,9 @@ window.addEventListener('beforeunload', e=>{
     empSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
       employees.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
   }
+}
+(function initAccessGate(){
+  populateGateSelects();
   const genBox = document.getElementById('gate-generated-passwords');
   if(genBox && migrationGeneratedPasswords.length){
     genBox.style.display = 'block';
