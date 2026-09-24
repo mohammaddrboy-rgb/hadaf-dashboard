@@ -213,7 +213,7 @@ function migrateLegacyData(){
     samples.forEach((x,i)=>{
       const total = x.quantity*x.unitCost;
       const d = new Date(base); d.setDate(d.getDate()+i*2);
-      const dateStr = d.toISOString().slice(0,10);
+      const dateStr = dateToISO(d);
       db.bookPurchases.push({
         id: uid(), title:x.title, source:x.source, branch:x.branch, quantity:x.quantity, unitCost:x.unitCost, totalCost: total,
         date: dateStr, paidAmount: Math.round(total*x.paidRatio), paidDate: x.paidRatio>0?dateStr:'', dueDate: x.paidRatio<1?todayISO():'', note:'',
@@ -274,7 +274,10 @@ function moneyNum(id){
   if(!el) return 0;
   return Number((el.value||'').replace(/,/g,'')) || 0;
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+/* Local-timezone date -> YYYY-MM-DD. (toISOString() converts to UTC, which
+   shifts the date back a day in Afghanistan/any positive-UTC timezone.) */
+function dateToISO(dt){ const y=dt.getFullYear(); const m=String(dt.getMonth()+1).padStart(2,'0'); const d=String(dt.getDate()).padStart(2,'0'); return `${y}-${m}-${d}`; }
+function todayISO(){ return dateToISO(new Date()); }
 
 /* ---------------- Dari (Solar Hijri) calendar ---------------- */
 const AFG_MONTHS=['حمل','ثور','جوزا','سرطان','اسد','سنبله','میزان','عقرب','قوس','جدی','دلو','حوت'];
@@ -2696,7 +2699,7 @@ function renderShareholders(){
 /* ---------------- Activity Log ---------------- */
 function formatLogTime(iso){
   const d = new Date(iso);
-  const dateStr = toJalali(d.toISOString().slice(0,10));
+  const dateStr = toJalali(dateToISO(d));
   const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
   return `${dateStr} ، ${faDigits(hh)}:${faDigits(mm)}`;
 }
@@ -2769,7 +2772,7 @@ function classSessionDates(c){
   const endD = new Date(end+'T00:00:00');
   while(d<=endD){
     if(d.getDay()!==5){ // 5 = Friday (day off)
-      dates.push(d.toISOString().slice(0,10));
+      dates.push(dateToISO(d));
     }
     d.setDate(d.getDate()+1);
   }
@@ -2893,7 +2896,7 @@ function renderAttendanceGrid(){
   const isAct = attendanceMode==='activity';
 
   const head = `<th style="position:sticky; right:0; background:var(--panel-2); min-width:150px;">شاگرد</th>` +
-    dates.map(d=>`<th style="min-width:34px; font-size:10px;">${faDigits(new Date(d+'T00:00:00').getDate())}<br>${AFG_MONTHS[g2jParts(d)[1]-1].slice(0,3)}</th>`).join('') +
+    dates.map(d=>{ const p=g2jParts(d); return `<th style="min-width:42px; font-size:10px; line-height:1.35; white-space:nowrap;">${faDigits(p[2])}<br>${AFG_MONTHS[p[1]-1]}</th>`; }).join('') +
     `<th style="min-width:70px;">${isAct?'مثبت/منفی':'حاضر/غایب'}</th>`;
   const rows = enrolledPage.map(s=>{
     const cells = dates.map(d=>{
