@@ -432,11 +432,26 @@ function printStudentProfile(profileId){
   const logo = `${location.origin}/assets/logo.png`;
   const nowJ = toJalali(todayISO());
 
+  // Compact 80mm receipt rows (student info + amount paid) — one block per enrollment
+  const receiptItems = rows.length ? rows.map(s=>{
+    const net = studentNetFee(s), paid = Number(s.paidAmount)||0, remain = studentRemaining(s);
+    const disc = studentTotalDiscountPercent(s);
+    return `<div class="r-item">
+      <div class="r-line"><span>صنف</span><b>${className(s.classId)}</b></div>
+      <div class="r-line"><span>شعبه</span><span>${classBranch(s.classId)}</span></div>
+      <div class="r-line"><span>تاریخ ثبت‌نام</span><span>${toJalali(s.registerDate)}</span></div>
+      <div class="r-line"><span>شهریهٔ نهایی</span><span>${afn(net)}</span></div>
+      ${disc?`<div class="r-line"><span>تخفیف</span><span>${faDigits(disc)}٪</span></div>`:''}
+      <div class="r-line"><span>پرداخت‌شده</span><b>${afn(paid)}</b></div>
+      <div class="r-line"><span>باقیمانده</span><span>${afn(remain)}</span></div>
+    </div>`;
+  }).join('<div class="r-sep"></div>') : '<div class="r-line">هنوز ثبت‌نامی انجام نشده است.</div>';
+
   const win = window.open('', '_blank');
   if(!win){ alert('لطفاً اجازهٔ باز شدن پنجرهٔ چاپ را بدهید.'); return; }
   win.document.write(`<!doctype html><html dir="rtl" lang="fa"><head><meta charset="utf-8">
-  <title>پروندهٔ شاگرد · ${p.name}</title>
-  <style id="page-style">@page{ size:A4 portrait; margin:12mm; }</style>
+  <title>رسید / پروندهٔ شاگرد · ${p.name}</title>
+  <style id="page-style">@page{ size:80mm auto; margin:0; }</style>
   <style>
     *{ box-sizing:border-box; }
     body{ font-family:Tahoma,Arial,sans-serif; color:#111; margin:0; padding:0; background:#fff; }
@@ -444,6 +459,22 @@ function printStudentProfile(profileId){
     .toolbar label{ color:#333; }
     .toolbar select, .toolbar button{ font-family:inherit; font-size:13px; padding:6px 10px; border:1px solid #bbb; border-radius:6px; background:#fff; cursor:pointer; }
     .toolbar button.print{ background:#4b2fd6; color:#fff; border-color:#4b2fd6; font-weight:bold; }
+    .hidden{ display:none !important; }
+
+    /* ---- 80mm thermal receipt ---- */
+    .receipt{ width:72mm; margin:0 auto; padding:3mm 2mm; color:#000; font-size:12px; line-height:1.45; }
+    .receipt .r-head{ text-align:center; }
+    .receipt .r-head img{ width:40px; height:40px; object-fit:contain; }
+    .receipt .r-head h1{ font-size:15px; margin:3px 0 0; }
+    .receipt .r-head .r-title{ font-size:12px; margin:2px 0 0; }
+    .receipt .r-sep{ border-top:1px dashed #000; margin:5px 0; }
+    .receipt .r-line{ display:flex; justify-content:space-between; gap:8px; }
+    .receipt .r-line > span:first-child{ color:#333; }
+    .receipt .r-item{ margin:2px 0; }
+    .receipt .r-tot .r-line{ font-weight:bold; font-size:12.5px; }
+    .receipt .r-foot{ text-align:center; font-size:10px; margin-top:8px; }
+
+    /* ---- Full A4/A5 sheet ---- */
     .sheet{ padding:18px 22px; max-width:900px; margin:0 auto; }
     .head{ display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #4b2fd6; padding-bottom:12px; margin-bottom:14px; gap:12px; }
     .head .inst{ display:flex; align-items:center; gap:10px; }
@@ -466,7 +497,8 @@ function printStudentProfile(profileId){
   </style></head><body>
   <div class="toolbar">
     <label>اندازهٔ کاغذ:
-      <select onchange="setSize(this.value)">
+      <select id="sizeSel" onchange="setSize(this.value)">
+        <option value="thermal80" selected>رول ۸۰ میلی‌متری (رسید حرارتی)</option>
         <option value="A4">A4</option>
         <option value="A5">A5</option>
         <option value="A3">A3</option>
@@ -474,16 +506,40 @@ function printStudentProfile(profileId){
         <option value="Legal">Legal</option>
       </select>
     </label>
-    <label>جهت:
+    <label id="orient-wrap" style="display:none;">جهت:
       <select onchange="setOrient(this.value)">
         <option value="portrait">عمودی</option>
         <option value="landscape">افقی</option>
       </select>
     </label>
     <button class="print" onclick="window.print()">چاپ</button>
-    <span style="color:#666; font-size:11px;">اندازه و جهت را انتخاب کنید، سپس «چاپ» را بزنید.</span>
+    <span style="color:#666; font-size:11px;">اندازهٔ چاپ را انتخاب کنید، سپس «چاپ» را بزنید. پیش‌فرض: رول ۸۰ میلی‌متری.</span>
   </div>
-  <div class="sheet">
+
+  <div class="receipt" id="receipt">
+    <div class="r-head">
+      <img src="${logo}" onerror="this.style.display='none'" alt="">
+      <h1>آموزشگاه هدف</h1>
+      <div class="r-title">رسید ثبت‌نام و پرداخت</div>
+    </div>
+    <div class="r-sep"></div>
+    <div class="r-line"><span>کد شاگرد</span><b>${p.code||'-'}</b></div>
+    <div class="r-line"><span>نام شاگرد</span><b>${p.name||'-'}</b></div>
+    <div class="r-line"><span>پایه/سن</span><span>${p.grade||'-'}</span></div>
+    <div class="r-line"><span>سرپرست</span><span>${p.guardianName||'-'}</span></div>
+    <div class="r-line"><span>تماس</span><span>${p.guardianPhone||'-'}</span></div>
+    <div class="r-sep"></div>
+    ${receiptItems}
+    <div class="r-sep"></div>
+    <div class="r-tot">
+      <div class="r-line"><span>مجموع پرداخت‌شده</span><span>${afn(totPaid)}</span></div>
+      <div class="r-line"><span>مجموع باقیمانده</span><span>${afn(totRemain)}</span></div>
+    </div>
+    <div class="r-sep"></div>
+    <div class="r-foot">تاریخ چاپ: ${nowJ}<br>از اعتماد شما سپاسگزاریم — آموزشگاه هدف</div>
+  </div>
+
+  <div class="sheet hidden" id="sheet">
     <div class="head">
       <div class="inst">
         <img class="logo" src="${logo}" onerror="this.style.display='none'" alt="">
@@ -512,11 +568,24 @@ function printStudentProfile(profileId){
       <div class="sign">امضای شاگرد/سرپرست</div>
     </div>
   </div>
+
   <script>
-    var _size='A4', _orient='portrait';
-    function _apply(){ document.getElementById('page-style').textContent='@page{ size:'+_size+' '+_orient+'; margin:12mm; }'; }
-    function setSize(v){ _size=v; _apply(); }
+    var _size='thermal80', _orient='portrait';
+    function _apply(){
+      var st=document.getElementById('page-style');
+      if(_size==='thermal80'){ st.textContent='@page{ size:80mm auto; margin:0; }'; }
+      else { st.textContent='@page{ size:'+_size+' '+_orient+'; margin:12mm; }'; }
+    }
+    function setSize(v){
+      _size=v;
+      var thermal=(v==='thermal80');
+      document.getElementById('receipt').classList.toggle('hidden', !thermal);
+      document.getElementById('sheet').classList.toggle('hidden', thermal);
+      document.getElementById('orient-wrap').style.display = thermal ? 'none' : 'inline';
+      _apply();
+    }
     function setOrient(v){ _orient=v; _apply(); }
+    _apply();
   <\/script>
   </body></html>`);
   win.document.close();
