@@ -99,6 +99,16 @@ const VIEW_TITLES = {
 
 /* ---------------- Storage ---------------- */
 const STORE_KEY = 'hadaf_dashboard_v1';
+/* Placeholder the server sends instead of real passwords to everyone except
+   shareholders (must match HIDDEN_PASSWORD in server/server.js). */
+const HIDDEN_PASSWORD = '__hidden__';
+/* Save the working copy in this browser. Returns false when the browser
+   refuses (storage full), so callers can warn. A student's trimmed copy of
+   the data is never cached. */
+function persistLocal(){
+  if(db && db.__view) return true;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); return true; } catch(e) { return false; }
+}
 let db = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
 if(!db){
   db = window.HADAF_SEED;
@@ -114,9 +124,10 @@ if(!db.discountCodesSeeded){
     db.discountCodes = window.HADAF_SEED.discountCodes.map(c=>Object.assign({}, c));
   }
   db.discountCodesSeeded = true;
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e) {}
+  persistLocal();
 }
 function migrateLegacyData(){
+  if(db.__view) return; // trimmed per-user copy from the server (student): nothing to migrate
   let changed = false;
   db.teachers.forEach(t=>{
     if(!t.role){ t.role='مدرس'; changed=true; }
@@ -196,12 +207,6 @@ function migrateLegacyData(){
     db.shareholderRestructure2026 = true;
     changed = true;
   }
-  // Set Mushtaq Mirzayi's login password to the value chosen by the owner
-  if(!db.mushtaqPasswordSet){
-    const mushtaq = db.shareholders.find(s=> s.name==='مشتاق میرزایی');
-    if(mushtaq){ mushtaq.password = '084597'; changed = true; }
-    db.mushtaqPasswordSet = true;
-  }
   if(!db.bookPurchases.length){
     const samples = [
       { title:'General English Coursebook 1', source:'مطبعهٔ آریانا', branch:BRANCHES[0], quantity:30, unitCost:250, paidRatio:1 },
@@ -221,11 +226,19 @@ function migrateLegacyData(){
     });
     changed = true;
   }
-  if(changed){ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
+  if(changed) persistLocal();
 }
 let migrationGeneratedPasswords = [];
 migrateLegacyData();
-function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }catch(e){} if(typeof scheduleServerPush==='function') scheduleServerPush(); renderAll(); }
+let storageWarned = false;
+function save(){
+  if(!persistLocal() && !storageWarned){
+    storageWarned = true;
+    alert('حافظهٔ این مرورگر پر است و تغییرات فقط روی سرور ذخیره می‌شوند. اگر اتصال به سرور برقرار نیست، قبل از بستن صفحه از «تنظیمات» نسخهٔ پشتیبان بگیرید. (معمولاً عکس‌های حجیم باعث این مشکل می‌شوند.)');
+  }
+  if(typeof scheduleServerPush==='function') scheduleServerPush();
+  renderAll();
+}
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 /* ---------------- Backup / Restore ---------------- */
@@ -368,7 +381,15 @@ function jalaliPicker(idPrefix, gregStr){
 function jalaliPickerValue(idPrefix){
   const y = document.getElementById(idPrefix+'-y'), m = document.getElementById(idPrefix+'-m'), d = document.getElementById(idPrefix+'-d');
   if(!y||!m||!d) return todayISO();
-  return j2gISO(y.value, m.value, d.value);
+  // The day list always offers 1–31; clamp so e.g. «۳۱ میزان» doesn't silently become 1 Aqrab.
+  const day = Math.min(Number(d.value), jalaliMonthLength(Number(y.value), Number(m.value)));
+  return j2gISO(y.value, m.value, day);
+}
+function jalaliMonthLength(jy, jm){
+  if(jm<=6) return 31;
+  if(jm<=11) return 30;
+  const p = g2jParts(j2gISO(jy, 12, 30)); // 30 Hut only exists in leap years
+  return (p[0]===jy && p[1]===12) ? 30 : 29;
 }
 
 /* ---------------- Unique ID codes ---------------- */
@@ -433,11 +454,30 @@ function regenerateShareholderPassword(shId){
   save();
   openShareholderProfileModal(shId);
 }
+/* Photos are stored inside the data (this browser's storage + the shared
+   server), so shrink them first: max 800px on the long side, JPEG. A phone
+   photo goes from several MB to roughly 50–150 KB. */
+const PHOTO_MAX_SIDE = 800;
 function readImageAsDataURL(inputEl, onDone){
   const file = inputEl.files && inputEl.files[0]; if(!file) return;
-  if(file.size > 4*1024*1024){ alert('حجم فایل زیاد است؛ لطفاً عکسی کوچک‌تر از ۴ مگابایت انتخاب کنید.'); return; }
+  if(!/^image\//.test(file.type||'')){ alert('لطفاً یک فایل عکس انتخاب کنید.'); return; }
+  if(file.size > 25*1024*1024){ alert('حجم فایل زیاد است؛ لطفاً عکسی کوچک‌تر از ۲۵ مگابایت انتخاب کنید.'); return; }
   const reader = new FileReader();
-  reader.onload = ()=> onDone(reader.result);
+  reader.onload = ()=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth*scale)), h = Math.max(1, Math.round(img.naturalHeight*scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); // transparent PNGs get a white background in JPEG
+      ctx.drawImage(img, 0, 0, w, h);
+      onDone(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = ()=> alert('این فایل عکس قابل خواندن نیست.');
+    img.src = reader.result;
+  };
   reader.readAsDataURL(file);
 }
 
@@ -476,13 +516,15 @@ function showAccessGate(){
 function hideAccessGate(){
   document.getElementById('access-gate').classList.remove('active');
 }
+/* Login. When the shared server is reachable the password is checked there
+   (and it hands back the session token that all data requests need); only when
+   no server answers — e.g. the files are opened with a plain static server —
+   do we fall back to checking against this browser's own copy of the data. */
 function attemptLogin(role){
   const errEl = document.getElementById('gate-error-' + role);
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
   const pinInput = document.getElementById('gate-pin-' + role);
   const pin = pinInput ? pinInput.value.trim() : '';
-  let actorName = '';
-  let realPassword = '';
 
   const showError = (msg) => {
     if (errEl) {
@@ -491,65 +533,60 @@ function attemptLogin(role){
     }
   };
 
-  if(role==='teacher'){
-    const sel = document.getElementById('gate-teacher-select');
-    const tid = sel ? sel.value : '';
-    if(!tid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
-    const t = db.teachers.find(x=>x.id===tid);
-    if(!t) return;
-    realPassword = t.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    currentTeacherId = tid;
-    sessionStorage.setItem('hadaf_teacher_id', tid);
-    actorName = t.name;
-  } else if(role==='shareholder'){
-    const sel = document.getElementById('gate-shareholder-select');
-    const shid = sel ? sel.value : '';
-    if(!shid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
-    const sh = db.shareholders.find(x=>x.id===shid);
-    if(!sh) return;
-    realPassword = sh.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    actorName = sh.name;
-  } else if(role==='manager'){
-    const sel = document.getElementById('gate-manager-select');
-    const mid = sel ? sel.value : '';
-    if(!mid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
-    const m = db.teachers.find(x=>x.id===mid);
-    if(!m) return;
-    realPassword = m.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    currentTeacherId = mid;
-    sessionStorage.setItem('hadaf_teacher_id', mid);
-    actorName = m.name;
-  } else if(role==='employee'){
-    const sel = document.getElementById('gate-employee-select');
-    const eid = sel ? sel.value : '';
-    if(!eid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
-    const e = db.teachers.find(x=>x.id===eid);
-    if(!e) return;
-    realPassword = e.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    currentTeacherId = eid;
-    sessionStorage.setItem('hadaf_teacher_id', eid);
-    actorName = e.name;
-  } else if(role==='student'){
+  let ident = '';
+  if(role==='student'){
     const codeEl = document.getElementById('gate-student-code');
-    const code = codeEl ? codeEl.value.trim() : '';
-    if(!code){ showError('کد شاگرد (نام کاربری) را وارد کنید.'); return; }
-    const prof = db.studentProfiles.find(p=> (p.code||'').toLowerCase()===code.toLowerCase());
-    if(!prof){ showError('کد شاگرد یافت نشد.'); return; }
-    realPassword = prof.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    currentStudentId = prof.id;
-    sessionStorage.setItem('hadaf_student_id', prof.id);
-    actorName = prof.name;
+    ident = codeEl ? codeEl.value.trim() : '';
+    if(!ident){ showError('کد شاگرد (نام کاربری) را وارد کنید.'); return; }
+  } else {
+    const sel = document.getElementById('gate-' + role + '-select');
+    ident = sel ? sel.value : '';
+    if(!ident){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
+  }
+  if(!pin){ showError('رمز عبور را وارد کنید.'); return; }
+
+  const localLogin = () => {
+    let actor = null;
+    if(role==='student'){
+      actor = db.studentProfiles.find(p=> (p.code||'').toLowerCase()===ident.toLowerCase());
+      if(!actor){ showError('کد شاگرد یافت نشد.'); return; }
+    } else if(role==='shareholder'){
+      actor = db.shareholders.find(x=>x.id===ident);
+    } else {
+      actor = db.teachers.find(x=>x.id===ident);
+    }
+    if(!actor){ showError('این نام در داده‌های این مرورگر یافت نشد؛ اتصال به سرور برقرار نیست.'); return; }
+    const realPassword = actor.password || '';
+    if(realPassword===HIDDEN_PASSWORD){ showError('اتصال به سرور برقرار نیست؛ ورود فعلاً ممکن نیست. کمی بعد دوباره امتحان کنید.'); return; }
+    if(!realPassword || pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
+    completeLogin(role, actor.id, actor.name);
+  };
+
+  if(typeof hadafServerLogin !== 'function'){ localLogin(); return; }
+  const btns = document.querySelectorAll('#gate-role-' + role + ' button');
+  btns.forEach(b=>b.disabled=true);
+  hadafServerLogin(role, ident, pin).then(r=>{
+    btns.forEach(b=>b.disabled=false);
+    if(r.ok) completeLogin(role, r.actorId, r.actorName);
+    else if(r.error==='bad') showError(role==='student' ? 'کد شاگرد یا رمز عبور نادرست است.' : 'رمز عبور واردشده نادرست است.');
+    else if(r.error==='rate') showError('تلاش‌های ناموفق زیاد بود؛ لطفاً ۱۵ دقیقه بعد دوباره امتحان کنید.');
+    else localLogin(); // no server (or server has no data yet)
+  });
+}
+
+function completeLogin(role, actorId, actorName){
+  if(role==='student'){
+    currentStudentId = actorId;
+    sessionStorage.setItem('hadaf_student_id', actorId);
+  } else if(role!=='shareholder'){
+    currentTeacherId = actorId;
+    sessionStorage.setItem('hadaf_teacher_id', actorId);
   }
   currentRole = role;
   currentActorName = actorName;
   sessionStorage.setItem('hadaf_role', role);
   sessionStorage.setItem('hadaf_actor_name', actorName);
-  logAction('ورود', 'نشست', `${ROLE_LABELS[role]} · ${actorName}`);
+  document.querySelectorAll('#access-gate input[type="password"]').forEach(i=>i.value='');
   hideAccessGate();
   applyRoleVisibility();
 
@@ -558,113 +595,29 @@ function attemptLogin(role){
   const defaultView = role==='teacher' ? 'classes' : role==='employee' ? 'students' : role==='student' ? 'studentSelf' : 'dashboard';
   const targetView = (hash && VIEW_TITLES[hash] && navAllowed(hash)) ? hash : defaultView;
   switchView(targetView, true);
+
+  const logIt = () => {
+    if(role==='student') return; // students have read-only access
+    logAction('ورود', 'نشست', `${ROLE_LABELS[role]} · ${actorName}`);
+    save();
+  };
+  // Load the shared data for this user first, then record the login on top of it.
+  if(typeof hadafAfterLogin === 'function') hadafAfterLogin().then(logIt); else logIt();
 }
 
-function logoutRole(){
-  if(currentRole) logAction('خروج', 'نشست', `${ROLE_LABELS[currentRole]} · ${currentActorName}`);
+function logoutRole(silent){
+  const role = currentRole;
+  if(role && role!=='student' && !silent){ logAction('خروج', 'نشست', `${ROLE_LABELS[role]} · ${currentActorName}`); save(); }
   sessionStorage.removeItem('hadaf_role'); sessionStorage.removeItem('hadaf_teacher_id'); sessionStorage.removeItem('hadaf_student_id'); sessionStorage.removeItem('hadaf_actor_name');
   currentRole=''; currentTeacherId=''; currentStudentId=''; currentActorName='';
   showAccessGate();
-  renderQuickLoginCards();
-  renderGateAllPasswords();
+  const done = () => {
+    // A student's session only held a trimmed copy of the data; start clean.
+    if(db && db.__view) location.reload();
+  };
+  if(typeof hadafServerLogout === 'function') hadafServerLogout().then(done); else done();
 }
 
-function renderQuickLoginCards() {
-  const container = document.getElementById('gate-quick-list');
-  if (!container) return;
-  const cards = [];
-
-  const sh = db.shareholders && db.shareholders[0];
-  if (sh) {
-    cards.push(`
-      <div class="quick-login-card">
-        <div class="quick-login-info">
-          <b>${esc(sh.name)}</b>
-          <span class="quick-login-code">سهامدار اصلی · رمز: <code>${esc(sh.password || '4545')}</code></span>
-        </div>
-        <button type="button" class="btn small" onclick="quickLoginAs('shareholder', '${escJs(sh.id)}', '${escJs(sh.password || '4545')}')">ورود آزمایشی</button>
-      </div>
-    `);
-  }
-
-  const mgr = db.teachers && db.teachers.find(t => t.role === 'مدیریت');
-  if (mgr) {
-    cards.push(`
-      <div class="quick-login-card">
-        <div class="quick-login-info">
-          <b>${esc(mgr.name)}</b>
-          <span class="quick-login-code">مدیر شعبه · رمز: <code>${esc(mgr.password || '2026')}</code></span>
-        </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('manager', '${escJs(mgr.id)}', '${escJs(mgr.password || '2026')}')">ورود آزمایشی</button>
-      </div>
-    `);
-  }
-
-  const tchr = db.teachers && db.teachers.find(t => t.role === 'مدرس');
-  if (tchr) {
-    cards.push(`
-      <div class="quick-login-card">
-        <div class="quick-login-info">
-          <b>${esc(tchr.name)}</b>
-          <span class="quick-login-code">مدرس · رمز: <code>${esc(tchr.password || '1010')}</code></span>
-        </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('teacher', '${escJs(tchr.id)}', '${escJs(tchr.password || '1010')}')">ورود آزمایشی</button>
-      </div>
-    `);
-  }
-
-  const emp = db.teachers && db.teachers.find(t => t.role === 'کارمند');
-  if (emp) {
-    cards.push(`
-      <div class="quick-login-card">
-        <div class="quick-login-info">
-          <b>${esc(emp.name)}</b>
-          <span class="quick-login-code">کارمند پذیرش · رمز: <code>${esc(emp.password || '1234')}</code></span>
-        </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('employee', '${escJs(emp.id)}', '${escJs(emp.password || '1234')}')">ورود آزمایشی</button>
-      </div>
-    `);
-  }
-
-  container.innerHTML = cards.join('');
-}
-
-function toggleGateDemoLogins() {
-  const box = document.getElementById('gate-quick-list');
-  const chevron = document.getElementById('gate-quick-chevron');
-  if (!box) return;
-  const isHidden = box.style.display === 'none';
-  box.style.display = isHidden ? 'grid' : 'none';
-  if (chevron) chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-  if (isHidden) renderQuickLoginCards();
-}
-
-function quickLoginAs(role, id, password) {
-  switchGateTab(role);
-  const sel = document.getElementById('gate-' + role + '-select');
-  if (sel) sel.value = id;
-  const pinInput = document.getElementById('gate-pin-' + role);
-  if (pinInput) pinInput.value = password;
-  attemptLogin(role);
-}
-
-function renderGateAllPasswords(){
-  const box = document.getElementById('gate-all-passwords');
-  if(!box) return;
-  const rows = [
-    ...db.shareholders.map(sh=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${esc(sh.name)}</b> <small style="color:var(--text-dim);">(سهامدار · ${esc(sh.code||'-')})</small></span> <code class="code-badge" style="cursor:default;">${esc(sh.password||'-')}</code></div>`),
-    ...db.teachers.map(t=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${esc(t.name)}</b> <small style="color:var(--text-dim);">(${esc(t.role||'مدرس')} · ${esc(t.code||'-')})</small></span> <code class="code-badge" style="cursor:default;">${esc(t.password||'-')}</code></div>`),
-  ];
-  box.innerHTML = rows.length ? rows.join('') : '<div style="color:var(--text-dim); text-align:center;">هنوز کاربری ثبت نشده است.</div>';
-}
-
-function toggleGateAllPasswords(){
-  const box = document.getElementById('gate-all-passwords');
-  if(!box) return;
-  const show = box.style.display==='none';
-  box.style.display = show ? 'block' : 'none';
-  if(show) renderGateAllPasswords();
-}
 function logAction(action, entityType, label){
   if(!db.activityLog) db.activityLog = [];
   db.activityLog.unshift({
@@ -2641,7 +2594,7 @@ function openShareholderProfileModal(id){
   openModal(`
     <h3>پروندهٔ سهامدار</h3>
     <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(sh.code||'-')}</span> · سهم: ${faDigits(sh.sharePercent||0)}٪</p>
-    <div class="panel" style="background:var(--panel-2); padding:12px 14px; margin-bottom:16px;">
+    ${currentRole==='shareholder' ? `<div class="panel" style="background:var(--panel-2); padding:12px 14px; margin-bottom:16px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <span style="font-size:12.5px; color:var(--text-dim);">رمز عبور ورود این سهامدار:</span>
         <div style="display:flex; align-items:center; gap:8px;">
@@ -2649,7 +2602,7 @@ function openShareholderProfileModal(id){
           <button class="btn ghost small" onclick="regenerateShareholderPassword('${escJs(sh.id)}')">تولید رمز جدید</button>
         </div>
       </div>
-    </div>
+    </div>` : ''}
     <div class="profile-grid">
       <div class="upload-box">
         <label>عکس سهامدار</label>
@@ -3186,25 +3139,28 @@ window.addEventListener('beforeunload', e=>{
 
 /* ---------------- Access gate bootstrap ---------------- */
 function populateGateSelects(){
+  // Before login this browser may not have the shared data; the server's public
+  // directory (names only) is the up-to-date list of who can log in.
+  const dir = window.hadafDirectory || { shareholders: db.shareholders, teachers: db.teachers };
   const sel = document.getElementById('gate-teacher-select');
   if(sel){
     sel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      db.teachers.filter(t=>t.role==='مدرس').map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+      dir.teachers.filter(t=>t.role==='مدرس').map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
   const shSel = document.getElementById('gate-shareholder-select');
   if(shSel){
     shSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      db.shareholders.map(sh=>`<option value="${esc(sh.id)}">${esc(sh.name)}</option>`).join('');
+      dir.shareholders.map(sh=>`<option value="${esc(sh.id)}">${esc(sh.name)}</option>`).join('');
   }
   const mgrSel = document.getElementById('gate-manager-select');
   if(mgrSel){
-    const managers = db.teachers.filter(t=>t.role==='مدیریت');
+    const managers = dir.teachers.filter(t=>t.role==='مدیریت');
     mgrSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
       managers.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
   const empSel = document.getElementById('gate-employee-select');
   if(empSel){
-    const employees = db.teachers.filter(t=>t.role==='کارمند');
+    const employees = dir.teachers.filter(t=>t.role==='کارمند');
     empSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
       employees.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
@@ -3226,7 +3182,6 @@ function populateGateSelects(){
   } else {
     currentRole = ''; currentTeacherId=''; currentStudentId=''; currentActorName='';
     showAccessGate();
-    renderQuickLoginCards();
     updateThemeUI(getCurrentTheme());
   }
 })();
