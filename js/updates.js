@@ -41,8 +41,8 @@ function teacherIncomeHtml(t){
       const share = isPct ? Math.round(collected * pct / 100) : (Number(t.payAmount)||0);
       lifetimeTotal += share;
       return `<tr>
-        <td>${c.name||c.category}</td>
-        <td>${c.branch||'-'}</td>
+        <td>${esc(c.name||c.category)}</td>
+        <td>${esc(c.branch||'-')}</td>
         <td class="num">${afn(collected)}</td>
         <td class="num"><b style="color:var(--gold-soft, var(--income));">${afn(share)}</b></td>
       </tr>`;
@@ -72,8 +72,8 @@ function teacherIncomeHtml(t){
     <tr>
       <td>${toJalali(p.date)}</td>
       <td class="num">${afn(p.amount)}</td>
-      <td>${(p.salaryPeriodM!=null) ? faDigits(p.salaryPeriodM+1)+'/'+faDigits(p.salaryPeriodY) : '-'}</td>
-      <td>${p.note||'-'}</td>
+      <td>${esc((p.salaryPeriodM!=null) ? faDigits(p.salaryPeriodM+1)+'/'+faDigits(p.salaryPeriodY) : '-')}</td>
+      <td>${esc(p.note||'-')}</td>
     </tr>`).join('') : `<tr><td colspan="4" class="empty">هنوز حقوقی برای شما ثبت/پرداخت نشده است.</td></tr>`;
 
   return `
@@ -85,7 +85,7 @@ function teacherIncomeHtml(t){
       <div class="card c-info"><div class="label">مجموع حقوق پرداخت‌شده به شما</div><div class="value info">${afn(totalPaid)}</div></div>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>صنف</th><th>شعبه</th><th class="num">شهریهٔ جمع‌آوری‌شده</th><th class="num">${shareHeader}</th></tr></thead>
+      <thead><tr><th>صنف</th><th>شعبه</th><th class="num">شهریهٔ جمع‌آوری‌شده</th><th class="num">${esc(shareHeader)}</th></tr></thead>
       <tbody>${classRows}</tbody>
     </table></div>
 
@@ -121,7 +121,7 @@ function renderMyIncome(){
   const t = db.teachers.find(x=>x.id===currentTeacherId);
   if(!t){ root.innerHTML = `<div class="panel"><p style="color:var(--text-dim); text-align:center; padding:12px;">اطلاعات پرسنل یافت نشد.</p></div>`; return; }
   root.innerHTML = `<div class="panel">
-    <div class="panel-head"><h2>درآمد و حقوق ${t.name} <span style="font-size:12px; color:var(--text-dim);">(${t.role||'مدرس'})</span></h2></div>
+    <div class="panel-head"><h2>درآمد و حقوق ${esc(t.name)} <span style="font-size:12px; color:var(--text-dim);">(${esc(t.role||'مدرس')})</span></h2></div>
     ${teacherIncomeHtml(t)}
   </div>`;
 }
@@ -141,14 +141,14 @@ function renderAssets(){
   const list = db.assets || [];
   const rows = list.length ? list.map(a=>`
     <tr>
-      <td>${a.name||'-'}</td>
-      <td>${a.category||'-'}</td>
+      <td>${esc(a.name||'-')}</td>
+      <td>${esc(a.category||'-')}</td>
       <td class="num">${afn(a.value)}</td>
-      <td>${a.acquiredDate?toJalali(a.acquiredDate):'-'}</td>
-      <td>${a.note||'-'}</td>
+      <td>${esc(a.acquiredDate?toJalali(a.acquiredDate):'-')}</td>
+      <td>${esc(a.note||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openAssetModal('${a.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteAsset('${a.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openAssetModal('${escJs(a.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteAsset('${escJs(a.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`).join('') : '';
 
@@ -176,13 +176,13 @@ function openAssetModal(id){
   const a = id ? (db.assets||[]).find(x=>x.id===id) : null;
   openModal(`
     <h3>${a?'ویرایش دارایی':'دارایی جدید'}</h3>
-    <div class="field"><label>نام دارایی</label><input id="f-asset-name" value="${a?(a.name||''):''}" placeholder="مثلاً: پروجکتور صنف ۳"></div>
+    <div class="field"><label>نام دارایی</label><input id="f-asset-name" value="${esc(a?(a.name||''):'')}" placeholder="مثلاً: پروجکتور صنف ۳"></div>
     <div class="field-row">
       <div class="field"><label>دسته</label><select id="f-asset-category">${categoryOptionsHtml(ASSET_CATEGORIES, a?a.category:ASSET_CATEGORIES[0])}</select></div>
-      <div class="field"><label>ارزش (افغانی)</label><input id="f-asset-value" class="money-input" value="${a&&a.value?numFmt(a.value):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+      <div class="field"><label>ارزش (افغانی)</label><input id="f-asset-value" class="money-input" value="${esc(a&&a.value?numFmt(a.value):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     </div>
     <div class="field"><label>تاریخ تملک</label>${jalaliPicker('f-asset-date', a?a.acquiredDate:null)}</div>
-    <div class="field"><label>توضیحات</label><input id="f-asset-note" value="${a?(a.note||''):''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-asset-note" value="${esc(a?(a.note||''):'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveAsset(${a?`'${a.id}'`:'null'})">ذخیره</button>
@@ -281,24 +281,24 @@ function renderTaxReport(){
   const tfOpts = [
     ['all','همه'],['daily','روزانه'],['weekly','هفتگی'],['monthly','ماهانه'],
     ['quarterly','فصلی'],['biannual','شش‌ماهه'],['annual','سالانه']
-  ].map(([v,l])=>`<option value="${v}" ${taxFilter.tf===v?'selected':''}>${l}</option>`).join('');
+  ].map(([v,l])=>`<option value="${esc(v)}" ${taxFilter.tf===v?'selected':''}>${esc(l)}</option>`).join('');
   const brOpts = `<option value="all" ${taxFilter.branch==='all'?'selected':''}>همهٔ شعبه‌ها</option>` +
-    BRANCHES.map(b=>`<option value="${b}" ${taxFilter.branch===b?'selected':''}>${b}</option>`).join('');
+    BRANCHES.map(b=>`<option value="${esc(b)}" ${taxFilter.branch===b?'selected':''}>${esc(b)}</option>`).join('');
 
   const monthRows = monthly.length ? monthly.map(m=>`
     <tr>
-      <td>${AFG_MONTHS[m.jm-1]} ${faDigits(m.jy)}</td>
+      <td>${esc(AFG_MONTHS[m.jm-1])} ${faDigits(m.jy)}</td>
       <td class="num">${afn(m.fees)}</td>
       <td class="num">${afn(m.cost)}</td>
       <td class="num"><b style="color:${m.fees-m.cost>=0?'var(--income)':'var(--cost)'};">${afn(m.fees-m.cost)}</b></td>
     </tr>`).join('') : `<tr><td colspan="4" class="empty">در این بازه داده‌ای نیست.</td></tr>`;
 
   const costRows = TAX_COST_CATEGORIES.map(c=>`
-    <tr><td>${c}</td><td class="num">${afn(costByCat[c]||0)}</td></tr>
+    <tr><td>${esc(c)}</td><td class="num">${afn(costByCat[c]||0)}</td></tr>
   `).join('');
 
   const branchRows = BRANCHES.map(b=>`
-    <tr><td>${b}</td><td class="num">${afn(byBranch[b]||0)}</td></tr>
+    <tr><td>${esc(b)}</td><td class="num">${afn(byBranch[b]||0)}</td></tr>
   `).join('');
 
   root.innerHTML = `
@@ -309,7 +309,7 @@ function renderTaxReport(){
       </div>
       <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">
         این گزارش فقط شامل <b>شهریهٔ جمع‌آوری‌شده (نقدی)</b> است و درآمد کتاب، کارت شاگردی، سایر درآمدها و سمینارها را در بر نمی‌گیرد.
-        هزینه‌های محاسبه‌شده تنها این دسته‌ها هستند: <b>${TAX_COST_CATEGORIES.join('، ')}</b>.
+        هزینه‌های محاسبه‌شده تنها این دسته‌ها هستند: <b>${esc(TAX_COST_CATEGORIES.join('، '))}</b>.
         مبالغ شهریه بر اساس تاریخ ثبت‌نام هر شاگرد در بازهٔ انتخابی محاسبه می‌شوند.
       </p>
       <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
@@ -406,17 +406,17 @@ function printStudentProfile(profileId){
     const card = s.idCardPrice ? (s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده') : '—';
     return `<tr>
       <td>${faDigits(i+1)}</td>
-      <td>${className(s.classId)}</td>
-      <td>${classBranch(s.classId)}</td>
+      <td>${esc(className(s.classId))}</td>
+      <td>${esc(classBranch(s.classId))}</td>
       <td>${toJalali(s.registerDate)}</td>
-      <td>${classStatus(cls)}</td>
+      <td>${esc(classStatus(cls))}</td>
       <td>${faDigits(studentTotalDiscountPercent(s))}٪</td>
       <td>${afn(net)}</td>
       <td>${afn(paid)}</td>
       <td>${afn(remain)}</td>
-      <td>${book}</td>
-      <td>${card}</td>
-      <td>${s.result || 'در حال آموزش'}</td>
+      <td>${esc(book)}</td>
+      <td>${esc(card)}</td>
+      <td>${esc(s.result || 'در حال آموزش')}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="12" style="text-align:center; color:#666;">هنوز در صنفی ثبت‌نام نشده است.</td></tr>`;
 
@@ -428,7 +428,7 @@ function printStudentProfile(profileId){
     <td colspan="3"></td>
   </tr>` : '';
 
-  const photo = p.photo ? `<img class="photo" src="${p.photo}" alt="">` : '';
+  const photo = p.photo ? `<img class="photo" src="${esc(p.photo)}" alt="">` : '';
   const logo = `${location.origin}/assets/logo.png`;
   const nowJ = toJalali(todayISO());
 
@@ -437,8 +437,8 @@ function printStudentProfile(profileId){
     const net = studentNetFee(s), paid = Number(s.paidAmount)||0, remain = studentRemaining(s);
     const disc = studentTotalDiscountPercent(s);
     return `<div class="r-item">
-      <div class="r-line"><span>صنف</span><b>${className(s.classId)}</b></div>
-      <div class="r-line"><span>شعبه</span><span>${classBranch(s.classId)}</span></div>
+      <div class="r-line"><span>صنف</span><b>${esc(className(s.classId))}</b></div>
+      <div class="r-line"><span>شعبه</span><span>${esc(classBranch(s.classId))}</span></div>
       <div class="r-line"><span>تاریخ ثبت‌نام</span><span>${toJalali(s.registerDate)}</span></div>
       <div class="r-line"><span>شهریهٔ نهایی</span><span>${afn(net)}</span></div>
       ${disc?`<div class="r-line"><span>تخفیف</span><span>${faDigits(disc)}٪</span></div>`:''}
@@ -450,7 +450,7 @@ function printStudentProfile(profileId){
   const win = window.open('', '_blank');
   if(!win){ alert('لطفاً اجازهٔ باز شدن پنجرهٔ چاپ را بدهید.'); return; }
   win.document.write(`<!doctype html><html dir="rtl" lang="fa"><head><meta charset="utf-8">
-  <title>رسید / پروندهٔ شاگرد · ${p.name}</title>
+  <title>رسید / پروندهٔ شاگرد · ${esc(p.name)}</title>
   <style id="page-style">@page{ size:80mm auto; margin:0; }</style>
   <style>
     *{ box-sizing:border-box; }
@@ -518,16 +518,16 @@ function printStudentProfile(profileId){
 
   <div class="receipt" id="receipt">
     <div class="r-head">
-      <img src="${logo}" onerror="this.style.display='none'" alt="">
+      <img src="${esc(logo)}" onerror="this.style.display='none'" alt="">
       <h1>آموزشگاه هدف</h1>
       <div class="r-title">رسید ثبت‌نام و پرداخت</div>
     </div>
     <div class="r-sep"></div>
-    <div class="r-line"><span>کد شاگرد</span><b>${p.code||'-'}</b></div>
-    <div class="r-line"><span>نام شاگرد</span><b>${p.name||'-'}</b></div>
-    <div class="r-line"><span>پایه/سن</span><span>${p.grade||'-'}</span></div>
-    <div class="r-line"><span>سرپرست</span><span>${p.guardianName||'-'}</span></div>
-    <div class="r-line"><span>تماس</span><span>${p.guardianPhone||'-'}</span></div>
+    <div class="r-line"><span>کد شاگرد</span><b>${esc(p.code||'-')}</b></div>
+    <div class="r-line"><span>نام شاگرد</span><b>${esc(p.name||'-')}</b></div>
+    <div class="r-line"><span>پایه/سن</span><span>${esc(p.grade||'-')}</span></div>
+    <div class="r-line"><span>سرپرست</span><span>${esc(p.guardianName||'-')}</span></div>
+    <div class="r-line"><span>تماس</span><span>${esc(p.guardianPhone||'-')}</span></div>
     <div class="r-sep"></div>
     ${receiptItems}
     <div class="r-sep"></div>
@@ -536,23 +536,23 @@ function printStudentProfile(profileId){
       <div class="r-line"><span>مجموع باقیمانده</span><span>${afn(totRemain)}</span></div>
     </div>
     <div class="r-sep"></div>
-    <div class="r-foot">تاریخ چاپ: ${nowJ}<br>از اعتماد شما سپاسگزاریم — آموزشگاه هدف</div>
+    <div class="r-foot">تاریخ چاپ: ${esc(nowJ)}<br>از اعتماد شما سپاسگزاریم — آموزشگاه هدف</div>
   </div>
 
   <div class="sheet hidden" id="sheet">
     <div class="head">
       <div class="inst">
-        <img class="logo" src="${logo}" onerror="this.style.display='none'" alt="">
+        <img class="logo" src="${esc(logo)}" onerror="this.style.display='none'" alt="">
         <div><h1>آموزشگاه هدف</h1><div style="font-size:11px;color:#666;">پروندهٔ شاگرد</div></div>
       </div>
-      <div class="meta">تاریخ چاپ: ${nowJ}<br>کد شاگرد: <b>${p.code||'-'}</b></div>
+      <div class="meta">تاریخ چاپ: ${esc(nowJ)}<br>کد شاگرد: <b>${esc(p.code||'-')}</b></div>
     </div>
     <div class="info">
       ${photo}
       <table>
-        <tr><td class="k">نام شاگرد:</td><td><b>${p.name||'-'}</b></td><td class="k">پایه/سن:</td><td>${p.grade||'-'}</td></tr>
-        <tr><td class="k">نام سرپرست:</td><td>${p.guardianName||'-'}</td><td class="k">تماس سرپرست:</td><td>${p.guardianPhone||'-'}</td></tr>
-        <tr><td class="k">تعداد ثبت‌نام‌ها:</td><td>${faDigits(rows.length)}</td><td class="k">توضیحات:</td><td>${p.note||'-'}</td></tr>
+        <tr><td class="k">نام شاگرد:</td><td><b>${esc(p.name||'-')}</b></td><td class="k">پایه/سن:</td><td>${esc(p.grade||'-')}</td></tr>
+        <tr><td class="k">نام سرپرست:</td><td>${esc(p.guardianName||'-')}</td><td class="k">تماس سرپرست:</td><td>${esc(p.guardianPhone||'-')}</td></tr>
+        <tr><td class="k">تعداد ثبت‌نام‌ها:</td><td>${faDigits(rows.length)}</td><td class="k">توضیحات:</td><td>${esc(p.note||'-')}</td></tr>
       </table>
     </div>
     <h2 class="section">سابقهٔ صنف‌ها و شهریه</h2>

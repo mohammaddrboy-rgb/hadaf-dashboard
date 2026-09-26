@@ -257,6 +257,13 @@ function importBackup(input){
 }
 
 /* ---------------- Helpers ---------------- */
+/* Escape a value for HTML text/attribute context. Every piece of stored data
+   rendered through innerHTML / document.write must go through this, otherwise a
+   name or note like `<img onerror=…>` would run as code for whoever views it. */
+function esc(v){ return String(v).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* Escape a value placed inside a single-quoted JS string within an inline
+   handler attribute, e.g. onclick="f('${escJs(id)}')". */
+function escJs(v){ return esc(String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n')); }
 function numFmt(n){
   n = Math.round(Number(n)||0);
   const neg = n<0; n = Math.abs(n);
@@ -301,9 +308,9 @@ function renderPaginationControls(containerId, key, totalPages, renderFnName){
   if(totalPages<=1){ el.innerHTML=''; return; }
   const page = paginationState[key]||1;
   el.innerHTML = `
-    <button class="btn ghost small" ${page<=1?'disabled':''} onclick="changePage('${key}',${page-1},'${renderFnName}')">‹ قبلی</button>
+    <button class="btn ghost small" ${page<=1?'disabled':''} onclick="changePage('${escJs(key)}',${page-1},'${escJs(renderFnName)}')">‹ قبلی</button>
     <span class="pagination-info">صفحهٔ ${faDigits(page)} از ${faDigits(totalPages)}</span>
-    <button class="btn ghost small" ${page>=totalPages?'disabled':''} onclick="changePage('${key}',${page+1},'${renderFnName}')">بعدی ›</button>
+    <button class="btn ghost small" ${page>=totalPages?'disabled':''} onclick="changePage('${escJs(key)}',${page+1},'${escJs(renderFnName)}')">بعدی ›</button>
   `;
 }
 function changePage(key, newPage, renderFnName){
@@ -349,13 +356,13 @@ function toJalali(gregStr){
 }
 function jalaliPicker(idPrefix, gregStr){
   const [jy,jm,jd] = g2jParts(gregStr || todayISO());
-  let dayOpts=''; for(let d=1; d<=31; d++) dayOpts += `<option value="${d}" ${d===jd?'selected':''}>${faDigits(d)}</option>`;
-  let monthOpts = AFG_MONTHS.map((m,i)=>`<option value="${i+1}" ${i+1===jm?'selected':''}>${m}</option>`).join('');
-  let yearOpts=''; for(let y=jy-5; y<=jy+5; y++) yearOpts += `<option value="${y}" ${y===jy?'selected':''}>${faDigits(y)}</option>`;
-  return `<div style="display:grid; grid-template-columns:0.8fr 1.4fr 1fr; gap:6px;" id="${idPrefix}-wrap">
-    <select id="${idPrefix}-d">${dayOpts}</select>
-    <select id="${idPrefix}-m">${monthOpts}</select>
-    <select id="${idPrefix}-y">${yearOpts}</select>
+  let dayOpts=''; for(let d=1; d<=31; d++) dayOpts += `<option value="${esc(d)}" ${d===jd?'selected':''}>${faDigits(d)}</option>`;
+  let monthOpts = AFG_MONTHS.map((m,i)=>`<option value="${esc(i+1)}" ${i+1===jm?'selected':''}>${esc(m)}</option>`).join('');
+  let yearOpts=''; for(let y=jy-5; y<=jy+5; y++) yearOpts += `<option value="${esc(y)}" ${y===jy?'selected':''}>${faDigits(y)}</option>`;
+  return `<div style="display:grid; grid-template-columns:0.8fr 1.4fr 1fr; gap:6px;" id="${esc(idPrefix)}-wrap">
+    <select id="${esc(idPrefix)}-d">${dayOpts}</select>
+    <select id="${esc(idPrefix)}-m">${monthOpts}</select>
+    <select id="${esc(idPrefix)}-y">${yearOpts}</select>
   </div>`;
 }
 function jalaliPickerValue(idPrefix){
@@ -572,10 +579,10 @@ function renderQuickLoginCards() {
     cards.push(`
       <div class="quick-login-card">
         <div class="quick-login-info">
-          <b>${sh.name}</b>
-          <span class="quick-login-code">سهامدار اصلی · رمز: <code>${sh.password || '4545'}</code></span>
+          <b>${esc(sh.name)}</b>
+          <span class="quick-login-code">سهامدار اصلی · رمز: <code>${esc(sh.password || '4545')}</code></span>
         </div>
-        <button type="button" class="btn small" onclick="quickLoginAs('shareholder', '${sh.id}', '${sh.password || '4545'}')">ورود آزمایشی</button>
+        <button type="button" class="btn small" onclick="quickLoginAs('shareholder', '${escJs(sh.id)}', '${escJs(sh.password || '4545')}')">ورود آزمایشی</button>
       </div>
     `);
   }
@@ -585,10 +592,10 @@ function renderQuickLoginCards() {
     cards.push(`
       <div class="quick-login-card">
         <div class="quick-login-info">
-          <b>${mgr.name}</b>
-          <span class="quick-login-code">مدیر شعبه · رمز: <code>${mgr.password || '2026'}</code></span>
+          <b>${esc(mgr.name)}</b>
+          <span class="quick-login-code">مدیر شعبه · رمز: <code>${esc(mgr.password || '2026')}</code></span>
         </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('manager', '${mgr.id}', '${mgr.password || '2026'}')">ورود آزمایشی</button>
+        <button type="button" class="btn small secondary" onclick="quickLoginAs('manager', '${escJs(mgr.id)}', '${escJs(mgr.password || '2026')}')">ورود آزمایشی</button>
       </div>
     `);
   }
@@ -598,10 +605,10 @@ function renderQuickLoginCards() {
     cards.push(`
       <div class="quick-login-card">
         <div class="quick-login-info">
-          <b>${tchr.name}</b>
-          <span class="quick-login-code">مدرس · رمز: <code>${tchr.password || '1010'}</code></span>
+          <b>${esc(tchr.name)}</b>
+          <span class="quick-login-code">مدرس · رمز: <code>${esc(tchr.password || '1010')}</code></span>
         </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('teacher', '${tchr.id}', '${tchr.password || '1010'}')">ورود آزمایشی</button>
+        <button type="button" class="btn small secondary" onclick="quickLoginAs('teacher', '${escJs(tchr.id)}', '${escJs(tchr.password || '1010')}')">ورود آزمایشی</button>
       </div>
     `);
   }
@@ -611,10 +618,10 @@ function renderQuickLoginCards() {
     cards.push(`
       <div class="quick-login-card">
         <div class="quick-login-info">
-          <b>${emp.name}</b>
-          <span class="quick-login-code">کارمند پذیرش · رمز: <code>${emp.password || '1234'}</code></span>
+          <b>${esc(emp.name)}</b>
+          <span class="quick-login-code">کارمند پذیرش · رمز: <code>${esc(emp.password || '1234')}</code></span>
         </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('employee', '${emp.id}', '${emp.password || '1234'}')">ورود آزمایشی</button>
+        <button type="button" class="btn small secondary" onclick="quickLoginAs('employee', '${escJs(emp.id)}', '${escJs(emp.password || '1234')}')">ورود آزمایشی</button>
       </div>
     `);
   }
@@ -645,8 +652,8 @@ function renderGateAllPasswords(){
   const box = document.getElementById('gate-all-passwords');
   if(!box) return;
   const rows = [
-    ...db.shareholders.map(sh=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${sh.name}</b> <small style="color:var(--text-dim);">(سهامدار · ${sh.code||'-'})</small></span> <code class="code-badge" style="cursor:default;">${sh.password||'-'}</code></div>`),
-    ...db.teachers.map(t=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${t.name}</b> <small style="color:var(--text-dim);">(${t.role||'مدرس'} · ${t.code||'-'})</small></span> <code class="code-badge" style="cursor:default;">${t.password||'-'}</code></div>`),
+    ...db.shareholders.map(sh=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${esc(sh.name)}</b> <small style="color:var(--text-dim);">(سهامدار · ${esc(sh.code||'-')})</small></span> <code class="code-badge" style="cursor:default;">${esc(sh.password||'-')}</code></div>`),
+    ...db.teachers.map(t=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${esc(t.name)}</b> <small style="color:var(--text-dim);">(${esc(t.role||'مدرس')} · ${esc(t.code||'-')})</small></span> <code class="code-badge" style="cursor:default;">${esc(t.password||'-')}</code></div>`),
   ];
   box.innerHTML = rows.length ? rows.join('') : '<div style="color:var(--text-dim); text-align:center;">هنوز کاربری ثبت نشده است.</div>';
 }
@@ -796,8 +803,8 @@ function filterByDate(list, field, key){
   return list.filter(item=>inTimeframe(item[field], key));
 }
 function exportControlHtml(category){
-  return `<select id="exp-${category}-tf">${TIMEFRAMES.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select>
-    <button class="btn ghost small" onclick="exportCategoryExcel('${category}')">خروجی اکسل</button>`;
+  return `<select id="exp-${esc(category)}-tf">${TIMEFRAMES.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')}</select>
+    <button class="btn ghost small" onclick="exportCategoryExcel('${escJs(category)}')">خروجی اکسل</button>`;
 }
 function downloadWorkbookFromRows(rowsByCategory, filenamePrefix){
   if(typeof XLSX==='undefined'){ alert('کتابخانهٔ اکسل بارگذاری نشد. اتصال اینترنت را بررسی کنید.'); return; }
@@ -925,21 +932,21 @@ function openProgressModal(entityType, id){
   if(!item.progressLog) item.progressLog = [];
   const label = entityType==='class' ? (item.name||item.category) : item.name;
   openModal(`
-    <h3>پیشرفت · ${label}</h3>
+    <h3>پیشرفت · ${esc(label)}</h3>
     <div class="field">
       <label>درصد پیشرفت فعلی: <b style="color:var(--gold-soft);">${faDigits(item.progress||0)}٪</b></label>
-      <input id="f-prog-pct" type="range" min="0" max="100" step="5" value="${item.progress||0}" style="width:100%;" oninput="document.getElementById('f-prog-pct-label').textContent=faDigits(this.value)+'٪'">
+      <input id="f-prog-pct" type="range" min="0" max="100" step="5" value="${esc(item.progress||0)}" style="width:100%;" oninput="document.getElementById('f-prog-pct-label').textContent=faDigits(this.value)+'٪'">
       <div class="hint">مقدار جدید: <span id="f-prog-pct-label">${faDigits(item.progress||0)}٪</span></div>
     </div>
     <div class="sectiontitle">افزودن یادداشت پیشرفت</div>
     <div class="field"><label>یادداشت (اختیاری)</label><input id="f-prog-note" placeholder="مثلاً: هفتهٔ سوم درس تمام شد"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
-      <button class="btn" onclick="saveProgress('${entityType}','${id}')">ثبت پیشرفت</button>
+      <button class="btn" onclick="saveProgress('${escJs(entityType)}','${escJs(id)}')">ثبت پیشرفت</button>
     </div>
     <div class="sectiontitle">تاریخچهٔ پیشرفت</div>
     <div id="prog-log-list">
-      ${item.progressLog.length ? item.progressLog.map(l=>`<div class="log-item"><div class="log-date">${toJalali(l.date)} · ${faDigits(l.pct)}٪</div>${l.note||''}</div>`).join('') : '<div class="empty">هنوز یادداشتی ثبت نشده.</div>'}
+      ${item.progressLog.length ? item.progressLog.map(l=>`<div class="log-item"><div class="log-date">${toJalali(l.date)} · ${faDigits(l.pct)}٪</div>${esc(l.note||'')}</div>`).join('') : '<div class="empty">هنوز یادداشتی ثبت نشده.</div>'}
     </div>
   `);
 }
@@ -1049,16 +1056,16 @@ function studentStatusTagClass(st){
 function classOptionsHtml(selectedId){
   if(!db.classes.length) return '<option value="">ابتدا یک صنف بسازید</option>';
   return '<option value="">انتخاب کنید</option>' + db.classes.map(c=>
-    `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name||c.category} · ${c.branch||'-'}${c.startTime?' · '+classTimeLabel(c):''} (${classStatus(c)})</option>`
+    `<option value="${esc(c.id)}" ${c.id===selectedId?'selected':''}>${esc(c.name||c.category)} · ${esc(c.branch||'-')}${esc(c.startTime?' · '+classTimeLabel(c):'')} (${esc(classStatus(c))})</option>`
   ).join('');
 }
 function teacherOptionsHtml(selectedId){
   return '<option value="">بدون مدرس مشخص</option>' + db.teachers.map(t=>
-    `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${t.name}</option>`
+    `<option value="${esc(t.id)}" ${t.id===selectedId?'selected':''}>${esc(t.name)}</option>`
   ).join('');
 }
 function categoryOptionsHtml(list, selected){
-  return list.map(c=>`<option value="${c}" ${c===selected?'selected':''}>${c}</option>`).join('');
+  return list.map(c=>`<option value="${esc(c)}" ${c===selected?'selected':''}>${esc(c)}</option>`).join('');
 }
 function openClassModal(id){
   const c = id ? db.classes.find(x=>x.id===id) : null;
@@ -1070,7 +1077,7 @@ function openClassModal(id){
       <div class="field"><label>شعبه</label><select id="f-cls-branch">${categoryOptionsHtml(BRANCHES, c?c.branch:BRANCHES[0])}</select></div>
       <div class="field"><label>دسته</label><select id="f-cls-category">${categoryOptionsHtml(CLASS_CATEGORIES, c?c.category:CLASS_CATEGORIES[0])}</select></div>
     </div>
-    <div class="field"><label>نام صنف (اختیاری)</label><input id="f-cls-name" value="${c?c.name||'':''}" placeholder="مثلاً: جنرال انگلیسی - سطح مبتدی"></div>
+    <div class="field"><label>نام صنف (اختیاری)</label><input id="f-cls-name" value="${esc(c?c.name||'':'')}" placeholder="مثلاً: جنرال انگلیسی - سطح مبتدی"></div>
     <div class="field"><label>مدرس</label>
       <div style="display:flex; gap:6px;">
         <select id="f-cls-teacher" style="flex:1;">${teacherOptionsHtml(c?c.teacherId:'')}</select>
@@ -1083,11 +1090,11 @@ function openClassModal(id){
         <option value="آنلاین" ${c&&c.mode==='آنلاین'?'selected':''}>آنلاین</option>
         <option value="حضوری و آنلاین" ${c&&c.mode==='حضوری و آنلاین'?'selected':''}>حضوری و آنلاین</option>
       </select></div>
-      <div class="field"><label>ظرفیت (اختیاری)</label><input id="f-cls-capacity" type="number" min="0" value="${c&&c.capacity?c.capacity:''}"></div>
+      <div class="field"><label>ظرفیت (اختیاری)</label><input id="f-cls-capacity" type="number" min="0" value="${esc(c&&c.capacity?c.capacity:'')}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>ساعت آغاز</label><input id="f-cls-start-time" type="time" value="${c?c.startTime||'':''}"></div>
-      <div class="field"><label>ساعت پایان</label><input id="f-cls-end-time" type="time" value="${c?c.endTime||'':''}"></div>
+      <div class="field"><label>ساعت آغاز</label><input id="f-cls-start-time" type="time" value="${esc(c?c.startTime||'':'')}"></div>
+      <div class="field"><label>ساعت پایان</label><input id="f-cls-end-time" type="time" value="${esc(c?c.endTime||'':'')}"></div>
     </div>
     <div class="field"><label>تاریخ آغاز</label>${jalaliPicker('f-cls-start', c?c.startDate:null)}</div>
     <div class="field">
@@ -1099,8 +1106,8 @@ function openClassModal(id){
         ${jalaliPicker('f-cls-end', c?c.endDate:null)}
       </div>
     </div>
-    <div class="field"><label>سالن/اتاق (اختیاری)</label><input id="f-cls-location" value="${c?c.location||'':''}" placeholder="مثلاً: اتاق ۲"></div>
-    <div class="field"><label>توضیحات</label><input id="f-cls-note" value="${c?c.note||'':''}"></div>
+    <div class="field"><label>سالن/اتاق (اختیاری)</label><input id="f-cls-location" value="${esc(c?c.location||'':'')}" placeholder="مثلاً: اتاق ۲"></div>
+    <div class="field"><label>توضیحات</label><input id="f-cls-note" value="${esc(c?c.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveClass(${c?`'${c.id}'`:'null'})">ذخیره</button>
@@ -1174,7 +1181,7 @@ function openSeminarModal(id){
   openModal(`
     <h3>${s?'ویرایش رویداد':'رویداد جدید'}</h3>
     <p class="sub">تصمیم می‌گیرید که این رویداد پولی باشد یا رایگان؛ محاسبهٔ تخفیف به‌صورت خودکار انجام می‌شود</p>
-    <div class="field"><label>عنوان</label><input id="f-sem-title" value="${s?s.title||'':''}" placeholder="مثلاً: کارگاه آمادگی آیلتس"></div>
+    <div class="field"><label>عنوان</label><input id="f-sem-title" value="${esc(s?s.title||'':'')}" placeholder="مثلاً: کارگاه آمادگی آیلتس"></div>
     <div class="field-row">
       <div class="field"><label>نوع</label><select id="f-sem-type">${categoryOptionsHtml(SEMINAR_TYPES, s?s.type:SEMINAR_TYPES[0])}</select></div>
       <div class="field"><label>شیوه</label><select id="f-sem-mode">${categoryOptionsHtml(SEMINAR_MODES, s?s.mode:SEMINAR_MODES[0])}</select></div>
@@ -1189,7 +1196,7 @@ function openSeminarModal(id){
       </div>
     </div>
     <div class="field"><label>تاریخ برگزاری</label>${jalaliPicker('f-sem-date', s?s.date:null)}</div>
-    <div class="field"><label>تعداد شرکت‌کننده (اختیاری)</label><input id="f-sem-count" type="number" min="0" value="${s&&s.attendeeCount?s.attendeeCount:''}"></div>
+    <div class="field"><label>تعداد شرکت‌کننده (اختیاری)</label><input id="f-sem-count" type="number" min="0" value="${esc(s&&s.attendeeCount?s.attendeeCount:'')}"></div>
 
     <div class="sectiontitle">هزینهٔ ثبت‌نام</div>
     <div class="field">
@@ -1200,12 +1207,12 @@ function openSeminarModal(id){
     </div>
     <div id="f-sem-fee-container" style="${isPaid?'':'display:none;'}">
       <div class="field-row">
-        <div class="field"><label>هزینهٔ ثبت‌نام (افغانی)</label><input id="f-sem-fee" class="money-input" value="${s&&s.fee?numFmt(s.fee):''}" oninput="formatMoneyInput(this); updateSeminarCalc();" placeholder="۰"></div>
-        <div class="field"><label>درصد تخفیف</label><input id="f-sem-discount" type="number" min="0" max="100" value="${s&&s.discountPercent?s.discountPercent:0}" oninput="updateSeminarCalc()"></div>
+        <div class="field"><label>هزینهٔ ثبت‌نام (افغانی)</label><input id="f-sem-fee" class="money-input" value="${esc(s&&s.fee?numFmt(s.fee):'')}" oninput="formatMoneyInput(this); updateSeminarCalc();" placeholder="۰"></div>
+        <div class="field"><label>درصد تخفیف</label><input id="f-sem-discount" type="number" min="0" max="100" value="${esc(s&&s.discountPercent?s.discountPercent:0)}" oninput="updateSeminarCalc()"></div>
       </div>
       <div class="calc-box"><span>هزینهٔ نهایی بعد از تخفیف (هر نفر)</span><b id="f-sem-net-display">${afn(netAfterDiscount(s?s.fee:0, s?s.discountPercent:0))}</b></div>
     </div>
-    <div class="field"><label>توضیحات</label><input id="f-sem-note" value="${s?s.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-sem-note" value="${esc(s?s.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveSeminar(${s?`'${s.id}'`:'null'})">ذخیره</button>
@@ -1246,7 +1253,7 @@ function resultTagClass(result){
   return 'info';
 }
 function resultOptionsHtml(selected){
-  return RESULT_OPTIONS.map(r=>`<option value="${r}" ${r===(selected||'')?'selected':''}>${r||'در حال آموزش'}</option>`).join('');
+  return RESULT_OPTIONS.map(r=>`<option value="${esc(r)}" ${r===(selected||'')?'selected':''}>${esc(r||'در حال آموزش')}</option>`).join('');
 }
 let pendingStudentPhoto = '';
 let pendingStudentIdPhoto = '';
@@ -1268,7 +1275,7 @@ function openStudentModal(id){
     <div class="sectiontitle">مشخصات شاگرد</div>
     ${s ? `
       <div class="field"><label>شاگرد</label>
-        <input disabled value="${p?p.code+' · '+p.name:'-'}" style="opacity:.75;">
+        <input disabled value="${esc(p?p.code+' · '+p.name:'-')}" style="opacity:.75;">
       </div>
       <p class="hint" style="margin:-4px 0 12px; font-size:11px; color:var(--text-faint);">برای ویرایش مشخصات این شاگرد، روی کد او در جدول کلیک کنید و از صفحهٔ پروندهٔ او اقدام نمایید.</p>
     ` : `
@@ -1276,7 +1283,7 @@ function openStudentModal(id){
         <label>جستجوی شاگرد موجود (اختیاری · برای ثبت‌نام در صنف جدید)</label>
         <input id="f-st-profile-search" list="dl-profiles" placeholder="کد یا نام را تایپ کنید، یا برای شاگرد جدید خالی بگذارید" oninput="onProfileSearchInput()">
         <datalist id="dl-profiles">
-          ${db.studentProfiles.map(pr=>`<option value="${pr.code} · ${pr.name}">`).join('')}
+          ${db.studentProfiles.map(pr=>`<option value="${esc(pr.code)} · ${esc(pr.name)}">`).join('')}
         </datalist>
       </div>
       <input type="hidden" id="f-st-profile-id" value="">
@@ -1309,11 +1316,11 @@ function openStudentModal(id){
 
     <div class="sectiontitle">شهریه</div>
     <div class="field-row">
-      <div class="field"><label>مبلغ شهریه (۰ برای رایگان)</label><input id="f-st-fee" class="money-input" value="${s&&s.feeAmount?numFmt(s.feeAmount):''}" oninput="formatMoneyInput(this); updateStudentCalc();" placeholder="۰"></div>
-      <div class="field"><label>درصد تخفیف دستی</label><input id="f-st-discount" type="number" min="0" max="100" value="${s&&s.discountPercent?s.discountPercent:0}" oninput="updateStudentCalc()"></div>
+      <div class="field"><label>مبلغ شهریه (۰ برای رایگان)</label><input id="f-st-fee" class="money-input" value="${esc(s&&s.feeAmount?numFmt(s.feeAmount):'')}" oninput="formatMoneyInput(this); updateStudentCalc();" placeholder="۰"></div>
+      <div class="field"><label>درصد تخفیف دستی</label><input id="f-st-discount" type="number" min="0" max="100" value="${esc(s&&s.discountPercent?s.discountPercent:0)}" oninput="updateStudentCalc()"></div>
     </div>
     <div class="calc-box"><span>شهریهٔ نهایی (فقط تخفیف دستی · تخفیف معرفی/خانوادگی پس از ذخیره افزوده می‌شود)</span><b id="f-st-net-display">${afn(netAfterDiscount(s?s.feeAmount:0, s?s.discountPercent:0))}</b></div>
-    <div class="field" style="margin-top:12px;"><label>مبلغ پرداخت‌شده</label><input id="f-st-paid" class="money-input" value="${s&&s.paidAmount?numFmt(s.paidAmount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+    <div class="field" style="margin-top:12px;"><label>مبلغ پرداخت‌شده</label><input id="f-st-paid" class="money-input" value="${esc(s&&s.paidAmount?numFmt(s.paidAmount):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     ${!s ? `
       <div class="field"><label>کد تخفیف مکتب (اختیاری)</label>
         <input id="f-st-school-code" placeholder="کد چاپ‌شده روی برگهٔ مکتب را وارد کنید" oninput="onSchoolCodeInput()" autocomplete="off">
@@ -1326,8 +1333,8 @@ function openStudentModal(id){
 
     <div class="sectiontitle">کتاب و کارت شاگردی (جدا از شهریه)</div>
     <div class="field-row">
-      <div class="field"><label>عنوان کتاب</label><input id="f-st-book-title" value="${s?s.bookTitle||'':''}" placeholder="مثلاً: General English Coursebook 1"></div>
-      <div class="field"><label>قیمت کتاب</label><input id="f-st-book-price" class="money-input" value="${s&&s.bookPrice?numFmt(s.bookPrice):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+      <div class="field"><label>عنوان کتاب</label><input id="f-st-book-title" value="${esc(s?s.bookTitle||'':'')}" placeholder="مثلاً: General English Coursebook 1"></div>
+      <div class="field"><label>قیمت کتاب</label><input id="f-st-book-price" class="money-input" value="${esc(s&&s.bookPrice?numFmt(s.bookPrice):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     </div>
     <div class="field">
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -1336,7 +1343,7 @@ function openStudentModal(id){
       </label>
     </div>
     <div class="field-row">
-      <div class="field"><label>قیمت کارت شاگردی</label><input id="f-st-idcard-price" class="money-input" value="${s&&s.idCardPrice?numFmt(s.idCardPrice):'۱۵۰'}" oninput="formatMoneyInput(this)"></div>
+      <div class="field"><label>قیمت کارت شاگردی</label><input id="f-st-idcard-price" class="money-input" value="${esc(s&&s.idCardPrice?numFmt(s.idCardPrice):'۱۵۰')}" oninput="formatMoneyInput(this)"></div>
       <div class="field">
         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-top:24px;">
           <input type="checkbox" id="f-st-idcard-paid" style="width:auto;" ${s&&s.idCardPaid?'checked':''}>
@@ -1347,13 +1354,13 @@ function openStudentModal(id){
 
     <div class="sectiontitle">نمرات و نتیجه</div>
     <div class="field-row">
-      <div class="field"><label>نمرهٔ فعالیت صنفی (از ۱۰۰)</label><input id="f-st-activity" type="number" min="0" max="100" value="${s?s.activityScore||'':''}"></div>
-      <div class="field"><label>نمرهٔ امتحان میان‌ترم (از ۱۰۰)</label><input id="f-st-midterm" type="number" min="0" max="100" value="${s?s.midtermScore||'':''}"></div>
-      <div class="field"><label>نمرهٔ امتحان فاینل (از ۱۰۰)</label><input id="f-st-exam" type="number" min="0" max="100" value="${s?s.examScore||'':''}"></div>
+      <div class="field"><label>نمرهٔ فعالیت صنفی (از ۱۰۰)</label><input id="f-st-activity" type="number" min="0" max="100" value="${esc(s?s.activityScore||'':'')}"></div>
+      <div class="field"><label>نمرهٔ امتحان میان‌ترم (از ۱۰۰)</label><input id="f-st-midterm" type="number" min="0" max="100" value="${esc(s?s.midtermScore||'':'')}"></div>
+      <div class="field"><label>نمرهٔ امتحان فاینل (از ۱۰۰)</label><input id="f-st-exam" type="number" min="0" max="100" value="${esc(s?s.examScore||'':'')}"></div>
     </div>
     <div class="field"><label>نتیجهٔ صنف</label><select id="f-st-result">${resultOptionsHtml(s?s.result:'')}</select></div>
     <p class="hint" style="margin:-6px 0 12px;">«کامیاب مشروط» برای شاگردانی است که با شرایطی مانند امتحان مجدد (ری‌تیک) اجازهٔ رفتن به سطح بعدی را دارند.</p>
-    <div class="field"><label>توضیحات</label><input id="f-st-note" value="${s?s.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-st-note" value="${esc(s?s.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveStudent(${s?`'${s.id}'`:'null'})">ذخیره</button>
@@ -1499,18 +1506,18 @@ function openStudentProfileModal(profileId){
     const att = studentAttendanceTotals(s.classId, s.id);
     return `
     <tr>
-      <td>${className(s.classId)}</td><td>${classBranch(s.classId)}</td><td>${toJalali(s.registerDate)}</td>
-      <td><span class="tag ${classStatusTagClass(classStatus(db.classes.find(c=>c.id===s.classId)||{}))}">${classStatus(db.classes.find(c=>c.id===s.classId)||{})}</span></td>
+      <td>${esc(className(s.classId))}</td><td>${esc(classBranch(s.classId))}</td><td>${toJalali(s.registerDate)}</td>
+      <td><span class="tag ${classStatusTagClass(classStatus(db.classes.find(c=>c.id===s.classId)||{}))}">${esc(classStatus(db.classes.find(c=>c.id===s.classId)||{}))}</span></td>
       <td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${faDigits(studentTotalDiscountPercent(s))}٪</td>
       <td class="num">${afn(studentNetFee(s))}</td><td class="num">${afn(studentRemaining(s))}</td>
       <td class="num">${faDigits(att.present)}</td><td class="num">${faDigits(att.absent)}</td>
-      <td class="num">${s.activityScore!==''&&s.activityScore!==undefined?faDigits(s.activityScore):'-'}</td>
-      <td class="num">${s.midtermScore!==''&&s.midtermScore!==undefined?faDigits(s.midtermScore):'-'}</td>
-      <td class="num">${s.examScore!==''&&s.examScore!==undefined?faDigits(s.examScore):'-'}</td>
+      <td class="num">${esc(s.activityScore!==''&&s.activityScore!==undefined?faDigits(s.activityScore):'-')}</td>
+      <td class="num">${esc(s.midtermScore!==''&&s.midtermScore!==undefined?faDigits(s.midtermScore):'-')}</td>
+      <td class="num">${esc(s.examScore!==''&&s.examScore!==undefined?faDigits(s.examScore):'-')}</td>
       <td class="num">${(function(){ const pt = (typeof studentParticipationTotals==='function')?studentParticipationTotals(s.classId,s.id):{plus:0,minus:0}; return `<span style="color:var(--income);">+${faDigits(pt.plus)}</span> / <span style="color:var(--cost);">−${faDigits(pt.minus)}</span>`; })()}</td>
-      <td>${s.bookTitle?`${s.bookTitle} <span class="tag ${s.bookPaid?'income':'cost'}" style="margin-right:4px;">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
+      <td>${s.bookTitle?`${esc(s.bookTitle)} <span class="tag ${s.bookPaid?'income':'cost'}" style="margin-right:4px;">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
-      <td>${s.result ? `<span class="tag ${resultTagClass(s.result)}">${s.result}</span>` : '<span class="tag info">در حال آموزش</span>'}</td>
+      <td>${s.result ? `<span class="tag ${resultTagClass(s.result)}">${esc(s.result)}</span>` : '<span class="tag info">در حال آموزش</span>'}</td>
     </tr>
   `;
   }).join('') : `<tr><td colspan="16" class="empty">هنوز در صنفی ثبت‌نام نشده.</td></tr>`;
@@ -1519,36 +1526,36 @@ function openStudentProfileModal(profileId){
   const referrerProfile = referredByEnrollment ? profileById(referredByEnrollment.referredBy) : null;
   const referredOthers = db.students.filter(s=>s.referredBy===p.id);
   const referralInfo = `
-    ${referrerProfile ? `<p class="hint">این شاگرد با معرفی <b>${referrerProfile.name} (${referrerProfile.code})</b> ثبت‌نام کرده است.</p>` : ''}
-    ${referredOthers.length ? `<p class="hint">این شاگرد تاکنون <b>${faDigits(referredOthers.length)}</b> نفر را معرفی کرده: ${referredOthers.map(s=>profileName(s.profileId)).join('، ')}</p>` : ''}
+    ${referrerProfile ? `<p class="hint">این شاگرد با معرفی <b>${esc(referrerProfile.name)} (${esc(referrerProfile.code)})</b> ثبت‌نام کرده است.</p>` : ''}
+    ${referredOthers.length ? `<p class="hint">این شاگرد تاکنون <b>${faDigits(referredOthers.length)}</b> نفر را معرفی کرده: ${esc(referredOthers.map(s=>profileName(s.profileId)).join('، '))}</p>` : ''}
   `;
 
   openModal(`
     <h3>پروندهٔ شاگرد</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${p.code||'-'}</span></p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(p.code||'-')}</span></p>
     ${referralInfo}
     <div class="profile-grid">
       <div class="upload-box">
         <label>عکس شاگرد</label>
-        ${p.photo?`<img src="${p.photo}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const pr=profileById('${p.id}'); pr.photo=url; save(); openStudentProfileModal('${p.id}'); })">
+        ${p.photo?`<img src="${esc(p.photo)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const pr=profileById('${escJs(p.id)}'); pr.photo=url; save(); openStudentProfileModal('${escJs(p.id)}'); })">
       </div>
       <div class="upload-box">
         <label>عکس سند هویت</label>
-        ${p.idPhoto?`<img src="${p.idPhoto}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const pr=profileById('${p.id}'); pr.idPhoto=url; save(); openStudentProfileModal('${p.id}'); })">
+        ${p.idPhoto?`<img src="${esc(p.idPhoto)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const pr=profileById('${escJs(p.id)}'); pr.idPhoto=url; save(); openStudentProfileModal('${escJs(p.id)}'); })">
       </div>
     </div>
     <div class="field-row">
-      <div class="field"><label>نام</label><input id="f-pf-name" value="${p.name}"></div>
-      <div class="field"><label>پایه/سن</label><input id="f-pf-grade" value="${p.grade||''}"></div>
+      <div class="field"><label>نام</label><input id="f-pf-name" value="${esc(p.name)}"></div>
+      <div class="field"><label>پایه/سن</label><input id="f-pf-grade" value="${esc(p.grade||'')}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>نام سرپرست</label><input id="f-pf-guardian" value="${p.guardianName||''}"></div>
-      <div class="field"><label>شماره تماس سرپرست</label><input id="f-pf-phone" value="${p.guardianPhone||''}"></div>
+      <div class="field"><label>نام سرپرست</label><input id="f-pf-guardian" value="${esc(p.guardianName||'')}"></div>
+      <div class="field"><label>شماره تماس سرپرست</label><input id="f-pf-phone" value="${esc(p.guardianPhone||'')}"></div>
     </div>
-    <div class="field"><label>کد/نام خانواده (برای تخفیف خانوادگی)</label><input id="f-pf-family" value="${p.familyId||''}" placeholder="مثلاً: نام خانوادگی یا شمارهٔ تماس مشترک خانواده"></div>
-    <div class="field"><label>توضیحات</label><input id="f-pf-note" value="${p.note||''}"></div>
+    <div class="field"><label>کد/نام خانواده (برای تخفیف خانوادگی)</label><input id="f-pf-family" value="${esc(p.familyId||'')}" placeholder="مثلاً: نام خانوادگی یا شمارهٔ تماس مشترک خانواده"></div>
+    <div class="field"><label>توضیحات</label><input id="f-pf-note" value="${esc(p.note||'')}"></div>
 
     <div class="sectiontitle">سابقهٔ صنف‌ها، نمرات و نتیجه</div>
     <div class="table-scroll"><table>
@@ -1558,8 +1565,8 @@ function openStudentProfileModal(profileId){
 
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">بستن</button>
-      <button class="btn secondary" onclick="printStudentProfile('${p.id}')">چاپ پرونده</button>
-      <button class="btn" onclick="saveStudentProfile('${p.id}')">ذخیرهٔ تغییرات</button>
+      <button class="btn secondary" onclick="printStudentProfile('${escJs(p.id)}')">چاپ پرونده</button>
+      <button class="btn" onclick="saveStudentProfile('${escJs(p.id)}')">ذخیرهٔ تغییرات</button>
     </div>
   `, {wide:true});
 }
@@ -1578,19 +1585,19 @@ function saveStudentProfile(id){
 /* ---------------- TEACHER (Personnel) modal ---------------- */
 const PERSONNEL_ROLES = ['مدرس','مدیریت','کارمند'];
 function personnelRoleOptionsHtml(selected){
-  return PERSONNEL_ROLES.map(r=>`<option value="${r}" ${r===(selected||'مدرس')?'selected':''}>${r}</option>`).join('');
+  return PERSONNEL_ROLES.map(r=>`<option value="${esc(r)}" ${r===(selected||'مدرس')?'selected':''}>${esc(r)}</option>`).join('');
 }
 function openTeacherModal(id){
   const t = id ? db.teachers.find(x=>x.id===id) : null;
   openModal(`
     <h3>${t?'ویرایش پرسنل':'پرسنل جدید'}</h3>
-    ${t?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'-'}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
+    ${t?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
     <div class="field-row">
-      <div class="field"><label>نام</label><input id="f-t-name" value="${t?t.name:''}"></div>
+      <div class="field"><label>نام</label><input id="f-t-name" value="${esc(t?t.name:'')}"></div>
       <div class="field"><label>نقش</label><select id="f-t-role">${personnelRoleOptionsHtml(t?t.role:'مدرس')}</select></div>
     </div>
-    <div class="field"><label>شماره تماس</label><input id="f-t-phone" value="${t?t.phone||'':''}"></div>
-    <div class="field"><label>مضامین/تخصص (برای مدرسان)</label><input id="f-t-subjects" value="${t?t.subjects||'':''}" placeholder="مثلاً: جنرال انگلیسی، آیلتس"></div>
+    <div class="field"><label>شماره تماس</label><input id="f-t-phone" value="${esc(t?t.phone||'':'')}"></div>
+    <div class="field"><label>مضامین/تخصص (برای مدرسان)</label><input id="f-t-subjects" value="${esc(t?t.subjects||'':'')}" placeholder="مثلاً: جنرال انگلیسی، آیلتس"></div>
 
     <div class="sectiontitle">قرارداد</div>
     <div class="field-row">
@@ -1613,10 +1620,10 @@ function openTeacherModal(id){
         <option value="ماهانه ثابت" ${t&&t.payType==='ماهانه ثابت'?'selected':''}>ماهانه ثابت</option>
         <option value="درصد شهریه" ${t&&t.payType==='درصد شهریه'?'selected':''}>درصد شهریهٔ جمع‌آوری‌شده</option>
       </select></div>
-      <div class="field"><label id="f-t-payamount-label">مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${t&&t.payAmount?numFmt(t.payAmount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+      <div class="field"><label id="f-t-payamount-label">مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${esc(t&&t.payAmount?numFmt(t.payAmount):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     </div>
     <p class="hint" id="f-t-pay-hint" style="margin:-6px 0 12px;"></p>
-    <div class="field"><label>توضیحات</label><input id="f-t-note" value="${t?t.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-t-note" value="${esc(t?t.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveTeacher(${t?`'${t.id}'`:'null'})">ذخیره</button>
@@ -1700,8 +1707,8 @@ function openTeacherProfileModal(teacherId){
     const fail = enrolled.filter(s=>s.result==='ناکام').length;
     const att = classAttendanceTotals(c.id);
     return `<tr>
-      <td>${c.name||c.category}</td><td>${c.branch||'-'}</td><td>${toJalali(c.startDate)}</td>
-      <td><span class="tag ${classStatusTagClass(classStatus(c))}">${classStatus(c)}</span></td>
+      <td>${esc(c.name||c.category)}</td><td>${esc(c.branch||'-')}</td><td>${toJalali(c.startDate)}</td>
+      <td><span class="tag ${classStatusTagClass(classStatus(c))}">${esc(classStatus(c))}</span></td>
       <td class="num">${faDigits(enrolled.length)}</td>
       <td class="num">${faDigits(pass)}</td><td class="num">${faDigits(fail)}</td>
       <td class="num">${faDigits(att.present)}</td><td class="num">${faDigits(att.absent)}</td>
@@ -1713,8 +1720,8 @@ function openTeacherProfileModal(teacherId){
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <span style="font-size:12.5px; color:var(--text-dim);">رمز عبور ورود این شخص (نقش مدرس/مدیر شعبه):</span>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="code-badge" style="cursor:default;">${t.password||'-'}</span>
-          <button class="btn ghost small" onclick="regeneratePersonnelPassword('${t.id}')">تولید رمز جدید</button>
+          <span class="code-badge" style="cursor:default;">${esc(t.password||'-')}</span>
+          <button class="btn ghost small" onclick="regeneratePersonnelPassword('${escJs(t.id)}')">تولید رمز جدید</button>
         </div>
       </div>
     </div>
@@ -1722,25 +1729,25 @@ function openTeacherProfileModal(teacherId){
 
   openModal(`
     <h3>پروندهٔ پرسنل</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'-'}</span> · نقش: ${t.role||'مدرس'}</p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span> · نقش: ${esc(t.role||'مدرس')}</p>
     ${passwordBlock}
     ${typeof teacherAdvanceAdminHtml==='function' ? teacherAdvanceAdminHtml(t) : ''}
     <div class="profile-grid">
       <div class="upload-box">
         <label>عکس پرسنل</label>
-        ${t.photo?`<img src="${t.photo}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const tt=db.teachers.find(x=>x.id==='${t.id}'); tt.photo=url; save(); openTeacherProfileModal('${t.id}'); })">
+        ${t.photo?`<img src="${esc(t.photo)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const tt=db.teachers.find(x=>x.id==='${escJs(t.id)}'); tt.photo=url; save(); openTeacherProfileModal('${escJs(t.id)}'); })">
       </div>
       <div class="upload-box">
         <label>عکس سند هویت</label>
-        ${t.idPhoto?`<img src="${t.idPhoto}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const tt=db.teachers.find(x=>x.id==='${t.id}'); tt.idPhoto=url; save(); openTeacherProfileModal('${t.id}'); })">
+        ${t.idPhoto?`<img src="${esc(t.idPhoto)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const tt=db.teachers.find(x=>x.id==='${escJs(t.id)}'); tt.idPhoto=url; save(); openTeacherProfileModal('${escJs(t.id)}'); })">
       </div>
     </div>
     <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:16px;">
-      <div class="card c-info"><div class="label">تاریخ آغاز قرارداد</div><div class="value info" style="font-size:14px;">${t.contractStart?toJalali(t.contractStart):'-'}</div></div>
-      <div class="card c-info"><div class="label">تاریخ پایان قرارداد</div><div class="value info" style="font-size:14px;">${t.contractEnd?toJalali(t.contractEnd):'نامشخص'}</div></div>
-      <div class="card c-income"><div class="label">نرخ کامیابی شاگردها</div><div class="value income" style="font-size:14px;">${stats.rate===null?'-':faDigits(stats.rate)+'٪ ('+faDigits(stats.pass)+'/'+faDigits(stats.total)+')'}</div></div>
+      <div class="card c-info"><div class="label">تاریخ آغاز قرارداد</div><div class="value info" style="font-size:14px;">${esc(t.contractStart?toJalali(t.contractStart):'-')}</div></div>
+      <div class="card c-info"><div class="label">تاریخ پایان قرارداد</div><div class="value info" style="font-size:14px;">${esc(t.contractEnd?toJalali(t.contractEnd):'نامشخص')}</div></div>
+      <div class="card c-income"><div class="label">نرخ کامیابی شاگردها</div><div class="value income" style="font-size:14px;">${esc(stats.rate===null?'-':faDigits(stats.rate)+'٪ ('+faDigits(stats.pass)+'/'+faDigits(stats.total)+')')}</div></div>
     </div>
 
     <div class="sectiontitle">سابقهٔ صنف‌های تدریس‌شده</div>
@@ -1753,7 +1760,7 @@ function openTeacherProfileModal(teacherId){
 
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">بستن</button>
-      <button class="btn" onclick="closeModal(); openTeacherModal('${t.id}');">ویرایش اطلاعات</button>
+      <button class="btn" onclick="closeModal(); openTeacherModal('${escJs(t.id)}');">ویرایش اطلاعات</button>
     </div>
   `, {wide:true});
 }
@@ -1808,9 +1815,9 @@ function openAdvanceModal(id){
     <h3>${a?'ویرایش پیش‌پرداخت':'پیش‌پرداخت جدید'}</h3>
     <p class="sub">مبلغی که از قبل به مدرس پرداخت شده و باید از حقوق ماهانهٔ او کسر شود</p>
     <div class="field"><label>مدرس</label><select id="f-adv-teacher">${teacherOptionsHtml(a?a.teacherId:'')}</select></div>
-    <div class="field"><label>مبلغ (افغانی)</label><input id="f-adv-amount" class="money-input" value="${a&&a.amount?numFmt(a.amount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+    <div class="field"><label>مبلغ (افغانی)</label><input id="f-adv-amount" class="money-input" value="${esc(a&&a.amount?numFmt(a.amount):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     <div class="field"><label>تاریخ</label>${jalaliPicker('f-adv-date', a?a.date:null)}</div>
-    <div class="field"><label>توضیحات</label><input id="f-adv-note" value="${a?a.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-adv-note" value="${esc(a?a.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveAdvance(${a?`'${a.id}'`:'null'})">ذخیره</button>
@@ -1865,15 +1872,15 @@ function openDonationModal(id){
   openModal(`
     <h3>${d?'ویرایش درآمد':'درآمد جدید'}</h3>
     <p class="hint" style="margin-top:-6px;">توجه: درآمد فروش کتاب و کارت شاگردی اینجا ثبت نشود · آن‌ها به‌صورت خودکار از صفحهٔ «کتاب و مطبوعات» محاسبه می‌شوند.</p>
-    <div class="field"><label>نام منبع درآمد (اختیاری)</label><input id="f-d-donor" value="${d?d.donorName||'':''}" placeholder="سایر"></div>
+    <div class="field"><label>نام منبع درآمد (اختیاری)</label><input id="f-d-donor" value="${esc(d?d.donorName||'':'')}" placeholder="سایر"></div>
     <div class="field-row">
-      <div class="field"><label>مبلغ</label><input id="f-d-amount" class="money-input" value="${d&&d.amount?numFmt(d.amount):''}" oninput="formatMoneyInput(this); updateDonationCalc();"></div>
-      <div class="field"><label>درصد تخفیف</label><input id="f-d-discount" type="number" min="0" max="100" value="${d&&d.discountPercent?d.discountPercent:0}" oninput="updateDonationCalc()"></div>
+      <div class="field"><label>مبلغ</label><input id="f-d-amount" class="money-input" value="${esc(d&&d.amount?numFmt(d.amount):'')}" oninput="formatMoneyInput(this); updateDonationCalc();"></div>
+      <div class="field"><label>درصد تخفیف</label><input id="f-d-discount" type="number" min="0" max="100" value="${esc(d&&d.discountPercent?d.discountPercent:0)}" oninput="updateDonationCalc()"></div>
     </div>
     <div class="calc-box"><span>مبلغ نهایی بعد از تخفیف</span><b id="f-d-net-display">${afn(netAfterDiscount(d?d.amount:0, d?d.discountPercent:0))}</b></div>
     <div class="field" style="margin-top:12px;"><label>روش</label><select id="f-d-method">${categoryOptionsHtml(DONATION_METHODS, d?d.method:DONATION_METHODS[0])}</select></div>
     <div class="field"><label>تاریخ</label>${jalaliPicker('f-d-date', d?d.date:null)}</div>
-    <div class="field"><label>توضیحات</label><input id="f-d-note" value="${d?d.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-d-note" value="${esc(d?d.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveDonation(${d?`'${d.id}'`:'null'})">ذخیره</button>
@@ -1913,9 +1920,9 @@ function openExpenseModal(id){
       <div class="field"><label>شعبه</label><select id="f-e-branch">${categoryOptionsHtml(BRANCHES, e?e.branch:BRANCHES[0])}</select></div>
       <div class="field"><label>دسته</label><select id="f-e-category">${categoryOptionsHtml(EXPENSE_CATEGORIES, e?e.category:EXPENSE_CATEGORIES[0])}</select></div>
     </div>
-    <div class="field"><label>مبلغ</label><input id="f-e-amount" class="money-input" value="${e&&e.amount?numFmt(e.amount):''}" oninput="formatMoneyInput(this)"></div>
+    <div class="field"><label>مبلغ</label><input id="f-e-amount" class="money-input" value="${esc(e&&e.amount?numFmt(e.amount):'')}" oninput="formatMoneyInput(this)"></div>
     <div class="field"><label>تاریخ</label>${jalaliPicker('f-e-date', e?e.date:null)}</div>
-    <div class="field"><label>توضیحات</label><input id="f-e-note" value="${e?e.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-e-note" value="${esc(e?e.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveExpense(${e?`'${e.id}'`:'null'})">ذخیره</button>
@@ -1945,10 +1952,10 @@ function openProjectModal(id){
     <h3>${p?'ویرایش پروژه':'پروژهٔ جدید'}</h3>
     <p class="sub">فعالیت یا برنامهٔ بزرگ‌تر آموزشگاه را ثبت کنید · پیشرفت آن از خودِ لیست پروژه‌ها قابل ثبت است</p>
     <div class="field-row">
-      <div class="field"><label>نام پروژه</label><input id="f-pr-name" value="${p?p.name:''}"></div>
+      <div class="field"><label>نام پروژه</label><input id="f-pr-name" value="${esc(p?p.name:'')}"></div>
       <div class="field"><label>دسته</label><select id="f-pr-category">${categoryOptionsHtml(PROJECT_CATEGORIES, p?p.category:PROJECT_CATEGORIES[0])}</select></div>
     </div>
-    <div class="field"><label>مسئول پروژه</label><input id="f-pr-lead" value="${p?p.lead||'':''}" placeholder="نام مسئول یا داوطلب"></div>
+    <div class="field"><label>مسئول پروژه</label><input id="f-pr-lead" value="${esc(p?p.lead||'':'')}" placeholder="نام مسئول یا داوطلب"></div>
     <div class="field"><label>تاریخ آغاز</label>${jalaliPicker('f-pr-start', p?p.startDate:null)}</div>
     <div class="field">
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -1959,7 +1966,7 @@ function openProjectModal(id){
         ${jalaliPicker('f-pr-end', p?p.endDate:null)}
       </div>
     </div>
-    <div class="field"><label>هدف/توضیحات</label><input id="f-pr-note" value="${p?p.note||'':''}"></div>
+    <div class="field"><label>هدف/توضیحات</label><input id="f-pr-note" value="${esc(p?p.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveProject(${p?`'${p.id}'`:'null'})">ذخیره</button>
@@ -1995,8 +2002,8 @@ function openMeetingModal(id){
   openModal(`
     <h3>${m?'ویرایش جلسه':'جلسهٔ جدید'}</h3>
     <div class="field"><label>تاریخ جلسه</label>${jalaliPicker('f-mt-date', m?m.date:null)}</div>
-    <div class="field"><label>حاضرین</label><input id="f-mt-attendees" value="${m?m.attendees||'':''}" placeholder="نام‌ها را با ویرگول جدا کنید"></div>
-    <div class="field"><label>یادداشت‌ها / صورت‌جلسه</label><textarea id="f-mt-notes" rows="4">${m?m.notes||'':''}</textarea></div>
+    <div class="field"><label>حاضرین</label><input id="f-mt-attendees" value="${esc(m?m.attendees||'':'')}" placeholder="نام‌ها را با ویرگول جدا کنید"></div>
+    <div class="field"><label>یادداشت‌ها / صورت‌جلسه</label><textarea id="f-mt-notes" rows="4">${esc(m?m.notes||'':'')}</textarea></div>
     <div class="sectiontitle">کارهای هفتهٔ آینده</div>
     <div id="mt-tasks-list"></div>
     <button type="button" class="btn ghost small" onclick="addTaskRow()">+ افزودن کار</button>
@@ -2013,8 +2020,8 @@ function renderTaskRows(){
   el.innerHTML = pendingMeetingTasks.map((t,i)=>`
     <div class="task-row">
       <input type="checkbox" ${t.done?'checked':''} onchange="pendingMeetingTasks[${i}].done=this.checked;">
-      <input type="text" value="${t.text||''}" placeholder="شرح کار" onchange="pendingMeetingTasks[${i}].text=this.value;">
-      <input type="text" class="task-assignee" value="${t.assignee||''}" placeholder="مسئول" onchange="pendingMeetingTasks[${i}].assignee=this.value;">
+      <input type="text" value="${esc(t.text||'')}" placeholder="شرح کار" onchange="pendingMeetingTasks[${i}].text=this.value;">
+      <input type="text" class="task-assignee" value="${esc(t.assignee||'')}" placeholder="مسئول" onchange="pendingMeetingTasks[${i}].assignee=this.value;">
       <button type="button" class="icon-btn" onclick="removeTaskRow(${i})" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
     </div>
   `).join('') || '<div class="hint">هنوز کاری افزوده نشده.</div>';
@@ -2065,7 +2072,7 @@ function renderDashboard(){
   document.getElementById('dash-recent-students-empty').style.display = db.students.length? 'none':'block';
   document.getElementById('dash-recent-students').innerHTML = recentStudents.map(s=>{
     const st = studentStatus(s);
-    return `<tr><td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${toJalali(s.registerDate)}</td><td><span class="tag ${studentStatusTagClass(st)}">${st}</span></td></tr>`;
+    return `<tr><td>${esc(profileName(s.profileId))}</td><td>${esc(className(s.classId))}</td><td>${toJalali(s.registerDate)}</td><td><span class="tag ${studentStatusTagClass(st)}">${esc(st)}</span></td></tr>`;
   }).join('');
   renderPaginationControls('dash-recent-students-pagination', 'dash-recent-students', rsPages, 'renderDashboard');
 
@@ -2073,7 +2080,7 @@ function renderDashboard(){
   const { pageItems: unpaid, totalPages: unpaidPages } = paginateList('dash-unpaid', unpaidAll);
   document.getElementById('dash-unpaid-empty').style.display = unpaidAll.length? 'none':'block';
   document.getElementById('dash-unpaid').innerHTML = unpaid.map(s=>`
-    <tr><td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${profileGuardianName(s.profileId)||'-'} ${profileGuardianPhone(s.profileId)?'· '+profileGuardianPhone(s.profileId):''}</td>
+    <tr><td>${esc(profileName(s.profileId))}</td><td>${esc(className(s.classId))}</td><td>${esc(profileGuardianName(s.profileId)||'-')} ${esc(profileGuardianPhone(s.profileId)?'· '+profileGuardianPhone(s.profileId):'')}</td>
     <td class="num"><span class="tag cost">${afn(studentRemaining(s))}</span></td></tr>
   `).join('');
   renderPaginationControls('dash-unpaid-pagination', 'dash-unpaid', unpaidPages, 'renderDashboard');
@@ -2082,16 +2089,16 @@ function renderDashboard(){
   document.getElementById('dash-classes-empty').style.display = db.classes.length? 'none':'block';
   document.getElementById('dash-classes').innerHTML = classesPage.map(c=>{
     const st = classStatus(c);
-    return `<tr><td>${c.name||c.category}</td><td>${teacherName(c.teacherId)}</td><td>${toJalali(c.startDate)}</td><td>${c.endDate?toJalali(c.endDate):'نامشخص'}</td>
-    <td class="num">${faDigits(classEnrolledCount(c.id))}${c.capacity?'/'+faDigits(c.capacity):''}</td>
-    <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td></tr>`;
+    return `<tr><td>${esc(c.name||c.category)}</td><td>${esc(teacherName(c.teacherId))}</td><td>${toJalali(c.startDate)}</td><td>${esc(c.endDate?toJalali(c.endDate):'نامشخص')}</td>
+    <td class="num">${faDigits(classEnrolledCount(c.id))}${esc(c.capacity?'/'+faDigits(c.capacity):'')}</td>
+    <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td></tr>`;
   }).join('');
   renderPaginationControls('dash-classes-pagination', 'dash-classes', classesPages, 'renderDashboard');
 
   const { pageItems: recentDonations, totalPages: donPages } = paginateList('dash-recent-donations', db.donations);
   document.getElementById('dash-recent-donations-empty').style.display = db.donations.length? 'none':'block';
   document.getElementById('dash-recent-donations').innerHTML = recentDonations.map(d=>`
-    <tr><td>${d.donorName}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${d.method}</td></tr>
+    <tr><td>${esc(d.donorName)}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${esc(d.method)}</td></tr>
   `).join('');
   renderPaginationControls('dash-recent-donations-pagination', 'dash-recent-donations', donPages, 'renderDashboard');
 }
@@ -2101,7 +2108,7 @@ let classBranchFilter = 'all';
 function renderClassesFilterChips(){
   document.getElementById('classes-filters').innerHTML =
     `<button class="chip ${classBranchFilter==='all'?'active':''}" data-branch="all">همهٔ شعبه‌ها</button>` +
-    BRANCHES.map(b=>`<button class="chip ${classBranchFilter===b?'active':''}" data-branch="${b}">${b}</button>`).join('');
+    BRANCHES.map(b=>`<button class="chip ${classBranchFilter===b?'active':''}" data-branch="${esc(b)}">${esc(b)}</button>`).join('');
 }
 document.getElementById('classes-filters').addEventListener('click', e=>{
   const chip = e.target.closest('.chip'); if(!chip) return;
@@ -2121,16 +2128,16 @@ function renderClasses(){
     const st = classStatus(c);
     const enrolled = classEnrolledCount(c.id);
     return `<tr>
-      <td>${c.name||'-'}</td><td>${c.branch||'-'}</td><td>${c.category}</td><td>${teacherName(c.teacherId)}</td><td>${c.mode||'-'}</td>
-      <td style="white-space:nowrap;">${classTimeLabel(c)}</td>
-      <td>${toJalali(c.startDate)}</td><td>${c.endDate?toJalali(c.endDate):'نامشخص'}</td>
-      <td class="num">${c.capacity?faDigits(c.capacity):'-'}</td>
+      <td>${esc(c.name||'-')}</td><td>${esc(c.branch||'-')}</td><td>${esc(c.category)}</td><td>${esc(teacherName(c.teacherId))}</td><td>${esc(c.mode||'-')}</td>
+      <td style="white-space:nowrap;">${esc(classTimeLabel(c))}</td>
+      <td>${toJalali(c.startDate)}</td><td>${esc(c.endDate?toJalali(c.endDate):'نامشخص')}</td>
+      <td class="num">${esc(c.capacity?faDigits(c.capacity):'-')}</td>
       <td class="num">${faDigits(enrolled)}</td>
-      <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td>
+      <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td>
       <td>${progressBarHtml(classTimeProgress(c))}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openClassModal('${c.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteClass('${c.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openClassModal('${escJs(c.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteClass('${escJs(c.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2143,14 +2150,14 @@ function renderProjects(){
   document.getElementById('projects-table').innerHTML = db.projects.map(p=>{
     const st = classStatus(p);
     return `<tr>
-      <td>${p.name}</td><td>${p.category}</td><td>${p.lead||'-'}</td>
-      <td>${toJalali(p.startDate)}</td><td>${p.endDate?toJalali(p.endDate):'نامشخص'}</td>
-      <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td>
+      <td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.lead||'-')}</td>
+      <td>${toJalali(p.startDate)}</td><td>${esc(p.endDate?toJalali(p.endDate):'نامشخص')}</td>
+      <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td>
       <td>${progressBarHtml(p.progress||0)}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openProgressModal('project','${p.id}')" title="پیشرفت"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg></button>
-        <button class="icon-btn" onclick="openProjectModal('${p.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteProject('${p.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openProgressModal('project','${escJs(p.id)}')" title="پیشرفت"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg></button>
+        <button class="icon-btn" onclick="openProjectModal('${escJs(p.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteProject('${escJs(p.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2164,11 +2171,11 @@ function renderMeetings(){
     const done = tasks.filter(t=>t.done).length;
     const notesPreview = (m.notes||'').length>70 ? (m.notes||'').slice(0,70)+'…' : (m.notes||'-');
     return `<tr>
-      <td>${toJalali(m.date)}</td><td>${m.attendees||'-'}</td><td>${notesPreview}</td>
+      <td>${toJalali(m.date)}</td><td>${esc(m.attendees||'-')}</td><td>${esc(notesPreview)}</td>
       <td class="num">${faDigits(done)}/${faDigits(tasks.length)}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openMeetingModal('${m.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteMeeting('${m.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openMeetingModal('${escJs(m.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteMeeting('${escJs(m.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2178,9 +2185,9 @@ function renderMeetings(){
   document.getElementById('open-tasks-empty').style.display = openTasks.length? 'none':'block';
   document.getElementById('open-tasks-table').innerHTML = openTasks.map(t=>`
     <tr>
-      <td>${t.text}</td><td>${t.assignee||'-'}</td><td>${toJalali(t.meetingDate)}</td>
+      <td>${esc(t.text)}</td><td>${esc(t.assignee||'-')}</td><td>${toJalali(t.meetingDate)}</td>
       <td><label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" style="width:auto;" onchange="toggleOpenTask('${t.meetingId}','${t.id}',this.checked)"> انجام شد
+        <input type="checkbox" style="width:auto;" onchange="toggleOpenTask('${escJs(t.meetingId)}','${escJs(t.id)}',this.checked)"> انجام شد
       </label></td>
     </tr>
   `).join('');
@@ -2217,16 +2224,16 @@ function renderStudents(){
   document.getElementById('students-table').innerHTML = pageItems.map(s=>{
     const st = studentStatus(s);
     return `<tr>
-      <td><span class="code-badge" onclick="openStudentProfileModal('${s.profileId}')">${profileCode(s.profileId)}</span></td>
-      <td>${profileName(s.profileId)}</td><td>${profileGrade(s.profileId)||'-'}</td><td>${profileGuardianName(s.profileId)||'-'}</td><td>${profileGuardianPhone(s.profileId)||'-'}</td>
-      <td>${className(s.classId)}</td><td>${classBranch(s.classId)}</td><td>${toJalali(s.registerDate)}</td>
-      <td class="num">${afn(s.feeAmount)}</td><td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${studentTotalDiscountPercent(s)?faDigits(studentTotalDiscountPercent(s))+'٪':'-'}</td><td class="num">${afn(s.paidAmount)}</td>
+      <td><span class="code-badge" onclick="openStudentProfileModal('${escJs(s.profileId)}')">${esc(profileCode(s.profileId))}</span></td>
+      <td>${esc(profileName(s.profileId))}</td><td>${esc(profileGrade(s.profileId)||'-')}</td><td>${esc(profileGuardianName(s.profileId)||'-')}</td><td>${esc(profileGuardianPhone(s.profileId)||'-')}</td>
+      <td>${esc(className(s.classId))}</td><td>${esc(classBranch(s.classId))}</td><td>${toJalali(s.registerDate)}</td>
+      <td class="num">${afn(s.feeAmount)}</td><td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${esc(studentTotalDiscountPercent(s)?faDigits(studentTotalDiscountPercent(s))+'٪':'-')}</td><td class="num">${afn(s.paidAmount)}</td>
       <td class="num">${afn(studentRemaining(s))}</td>
-      <td><span class="tag ${studentStatusTagClass(st)}">${st}</span></td>
-      <td>${s.result?`<span class="tag ${resultTagClass(s.result)}">${s.result}</span>`:'<span class="tag info">در حال آموزش</span>'}</td>
+      <td><span class="tag ${studentStatusTagClass(st)}">${esc(st)}</span></td>
+      <td>${s.result?`<span class="tag ${resultTagClass(s.result)}">${esc(s.result)}</span>`:'<span class="tag info">در حال آموزش</span>'}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openStudentModal('${s.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteStudent('${s.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openStudentModal('${escJs(s.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteStudent('${escJs(s.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2248,14 +2255,14 @@ function renderTeachers(){
   document.getElementById('teachers-table').innerHTML = pageItems.map(t=>{
     const classes = teacherClassesList(t.id);
     const names = classes.map(c=>c.name||c.category).join('، ') || '-';
-    const payLabel = t.payAmount ? `${t.payType==='درصد شهریه' ? faDigits(t.payAmount)+'٪' : afn(t.payAmount)} <span style="color:var(--text-faint);">(${t.payType||'-'})</span>` : '-';
+    const payLabel = t.payAmount ? `${esc(t.payType==='درصد شهریه' ? faDigits(t.payAmount)+'٪' : afn(t.payAmount))} <span style="color:var(--text-faint);">(${esc(t.payType||'-')})</span>` : '-';
     return `<tr>
-      <td><span class="code-badge" onclick="openTeacherProfileModal('${t.id}')">${t.code||'-'}</span></td>
-      <td>${t.name}</td><td><span class="tag info">${t.role||'مدرس'}</span></td><td>${t.phone||'-'}</td><td>${t.subjects||'-'}</td><td class="num">${payLabel}</td>
-      <td class="num">${faDigits(classes.length)}</td><td>${names}</td>
+      <td><span class="code-badge" onclick="openTeacherProfileModal('${escJs(t.id)}')">${esc(t.code||'-')}</span></td>
+      <td>${esc(t.name)}</td><td><span class="tag info">${esc(t.role||'مدرس')}</span></td><td>${esc(t.phone||'-')}</td><td>${esc(t.subjects||'-')}</td><td class="num">${payLabel}</td>
+      <td class="num">${faDigits(classes.length)}</td><td>${esc(names)}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openTeacherModal('${t.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteTeacher('${t.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openTeacherModal('${escJs(t.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteTeacher('${escJs(t.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2275,25 +2282,25 @@ function renderTeacherAdvances(){
     const advBal = teacherAdvanceBalance(t.id);
     const net = teacherNetSalary(t, y, m);
     return `<tr>
-      <td>${t.name}</td><td>${t.payType||'-'}</td><td class="num">${cnt}</td>
-      <td class="num">${afn(gross)}</td><td class="num">${tax?afn(tax):'-'}</td><td class="num">${advBal?afn(advBal):'-'}</td>
+      <td>${esc(t.name)}</td><td>${esc(t.payType||'-')}</td><td class="num">${esc(cnt)}</td>
+      <td class="num">${afn(gross)}</td><td class="num">${esc(tax?afn(tax):'-')}</td><td class="num">${esc(advBal?afn(advBal):'-')}</td>
       <td class="num"><b style="color:var(--gold-soft);">${afn(net)}</b></td>
-      <td><button class="btn ghost small" onclick="paySalary('${t.id}')">ثبت پرداخت</button></td>
+      <td><button class="btn ghost small" onclick="paySalary('${escJs(t.id)}')">ثبت پرداخت</button></td>
     </tr>`;
   }).join('');
 
   document.getElementById('advances-empty').style.display = db.teacherAdvances.length? 'none':'block';
   document.getElementById('advances-table').innerHTML = db.teacherAdvances.map(a=>`
     <tr>
-      <td>${teacherName(a.teacherId)}</td><td class="num">${afn(a.amount)}</td><td>${toJalali(a.date)}</td>
+      <td>${esc(teacherName(a.teacherId))}</td><td class="num">${afn(a.amount)}</td><td>${toJalali(a.date)}</td>
       <td><label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" style="width:auto;" ${a.settled?'checked':''} onchange="toggleAdvanceSettled('${a.id}',this.checked)">
+        <input type="checkbox" style="width:auto;" ${a.settled?'checked':''} onchange="toggleAdvanceSettled('${escJs(a.id)}',this.checked)">
         <span class="tag ${a.settled?'income':'cost'}">${a.settled?'تسویه‌شده':'باز'}</span>
       </label></td>
-      <td>${a.note||'-'}</td>
+      <td>${esc(a.note||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openAdvanceModal('${a.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteAdvance('${a.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openAdvanceModal('${escJs(a.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteAdvance('${escJs(a.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>
   `).join('');
@@ -2308,13 +2315,13 @@ function renderSeminars(){
       ? (s.discountPercent>0 ? `${afn(netFee)} <span style="color:var(--text-faint); text-decoration:line-through;">${afn(s.fee)}</span>` : afn(netFee))
       : '-';
     return `<tr>
-      <td>${s.title}</td><td>${s.type}</td><td>${s.location||'-'}</td><td>${teacherName(s.speakerId)}</td>
+      <td>${esc(s.title)}</td><td>${esc(s.type)}</td><td>${esc(s.location||'-')}</td><td>${esc(teacherName(s.speakerId))}</td>
       <td>${toJalali(s.date)}</td><td><span class="tag ${s.isPaid?'cost':'income'}">${s.isPaid?'پولی':'رایگان'}</span></td>
-      <td class="num">${feeCell}</td><td class="num">${s.attendeeCount?faDigits(s.attendeeCount):'-'}</td>
-      <td class="num">${s.isPaid?afn(seminarRevenue(s)):'-'}</td>
+      <td class="num">${feeCell}</td><td class="num">${esc(s.attendeeCount?faDigits(s.attendeeCount):'-')}</td>
+      <td class="num">${esc(s.isPaid?afn(seminarRevenue(s)):'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openSeminarModal('${s.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteSeminar('${s.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openSeminarModal('${escJs(s.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteSeminar('${escJs(s.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2326,10 +2333,10 @@ function renderDonations(){
   const { pageItems, totalPages } = paginateList('donations', db.donations);
   document.getElementById('donations-table').innerHTML = pageItems.map(d=>`
     <tr>
-      <td>${d.donorName}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${d.method}</td><td>${d.note||'-'}</td>
+      <td>${esc(d.donorName)}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${esc(d.method)}</td><td>${esc(d.note||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openDonationModal('${d.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteDonation('${d.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openDonationModal('${escJs(d.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteDonation('${escJs(d.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>
   `).join('');
@@ -2341,7 +2348,7 @@ let expenseBranchFilter = 'all';
 function renderExpensesFilterChips(){
   document.getElementById('expenses-filters').innerHTML =
     `<button class="chip ${expenseBranchFilter==='all'?'active':''}" data-branch="all">همهٔ شعبه‌ها</button>` +
-    BRANCHES.map(b=>`<button class="chip ${expenseBranchFilter===b?'active':''}" data-branch="${b}">${b}</button>`).join('');
+    BRANCHES.map(b=>`<button class="chip ${expenseBranchFilter===b?'active':''}" data-branch="${esc(b)}">${esc(b)}</button>`).join('');
 }
 document.getElementById('expenses-filters').addEventListener('click', e=>{
   const chip = e.target.closest('.chip'); if(!chip) return;
@@ -2361,10 +2368,10 @@ function renderExpenses(){
   document.getElementById('expenses-empty').style.display = list.length? 'none':'block';
   document.getElementById('expenses-table').innerHTML = list.map(e=>`
     <tr>
-      <td>${e.branch||'-'}</td><td><span class="tag cost">${e.category}</span></td><td class="num">${afn(e.amount)}</td><td>${toJalali(e.date)}</td><td>${e.note||'-'}</td>
+      <td>${esc(e.branch||'-')}</td><td><span class="tag cost">${esc(e.category)}</span></td><td class="num">${afn(e.amount)}</td><td>${toJalali(e.date)}</td><td>${esc(e.note||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openExpenseModal('${e.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteExpense('${e.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openExpenseModal('${escJs(e.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteExpense('${escJs(e.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>
   `).join('');
@@ -2372,7 +2379,7 @@ function renderExpenses(){
   const label = expenseBranchFilter==='all' ? 'مجموع کل (همهٔ شعبه‌ها)' : `مجموع ${expenseBranchFilter}`;
   const footEl = document.getElementById('expenses-foot');
   if(footEl) footEl.innerHTML = list.length
-    ? `<tr class="totals-row"><td colspan="2"><b>${label}</b></td><td class="num"><b>${afn(total)}</b></td><td colspan="3"></td></tr>`
+    ? `<tr class="totals-row"><td colspan="2"><b>${esc(label)}</b></td><td class="num"><b>${afn(total)}</b></td><td colspan="3"></td></tr>`
     : '';
 }
 
@@ -2380,7 +2387,7 @@ function renderExpenses(){
 let reportRange = 'all';
 function renderReportFilterChips(){
   document.getElementById('report-filters').innerHTML = TIMEFRAMES.map(t=>
-    `<button class="chip ${t.key==='all'?'active':''}" data-range="${t.key}">${t.label}</button>`
+    `<button class="chip ${t.key==='all'?'active':''}" data-range="${esc(t.key)}">${esc(t.label)}</button>`
   ).join('');
 }
 document.getElementById('report-filters').addEventListener('click', e=>{
@@ -2407,29 +2414,29 @@ function openBookPurchaseModal(id){
   const b = id ? db.bookPurchases.find(x=>x.id===id) : null;
   openModal(`
     <h3>${b?'ویرایش خرید کتاب':'خرید کتاب جدید'}</h3>
-    <div class="field"><label>عنوان کتاب</label><input id="f-bp-title" value="${b?b.title:''}" placeholder="مثلاً: General English Coursebook 1"></div>
+    <div class="field"><label>عنوان کتاب</label><input id="f-bp-title" value="${esc(b?b.title:'')}" placeholder="مثلاً: General English Coursebook 1"></div>
     <div class="field-row">
-      <div class="field"><label>منبع (کتاب‌فروشی/مطبعه)</label><input id="f-bp-source" list="dl-book-sources" value="${b?b.source||'':''}" placeholder="مثلاً: مطبعهٔ آریانا">
-        <datalist id="dl-book-sources">${Array.from(new Set(db.bookPurchases.map(x=>x.source).filter(Boolean))).map(s=>`<option value="${s}">`).join('')}</datalist>
+      <div class="field"><label>منبع (کتاب‌فروشی/مطبعه)</label><input id="f-bp-source" list="dl-book-sources" value="${esc(b?b.source||'':'')}" placeholder="مثلاً: مطبعهٔ آریانا">
+        <datalist id="dl-book-sources">${Array.from(new Set(db.bookPurchases.map(x=>x.source).filter(Boolean))).map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
       </div>
       <div class="field"><label>شعبه</label><select id="f-bp-branch">${categoryOptionsHtml(BRANCHES, b?b.branch:BRANCHES[0])}</select></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>تعداد</label><input id="f-bp-qty" type="number" min="0" value="${b?b.quantity||'':''}" oninput="updateBookPurchaseCalc()"></div>
-      <div class="field"><label>قیمت واحد (افغانی)</label><input id="f-bp-unit" class="money-input" value="${b&&b.unitCost?numFmt(b.unitCost):''}" oninput="formatMoneyInput(this); updateBookPurchaseCalc();"></div>
+      <div class="field"><label>تعداد</label><input id="f-bp-qty" type="number" min="0" value="${esc(b?b.quantity||'':'')}" oninput="updateBookPurchaseCalc()"></div>
+      <div class="field"><label>قیمت واحد (افغانی)</label><input id="f-bp-unit" class="money-input" value="${esc(b&&b.unitCost?numFmt(b.unitCost):'')}" oninput="formatMoneyInput(this); updateBookPurchaseCalc();"></div>
     </div>
     <div class="calc-box"><span>مجموع هزینهٔ سفارش</span><b id="f-bp-total-display">${afn(b?b.totalCost||0:0)}</b></div>
     <div class="field" style="margin-top:12px;"><label>تاریخ سفارش</label>${jalaliPicker('f-bp-date', b?b.date:null)}</div>
 
     <div class="sectiontitle">وضعیت پرداخت به منبع</div>
     <div class="field-row">
-      <div class="field"><label>مبلغ پرداخت‌شده تاکنون</label><input id="f-bp-paid" class="money-input" value="${b&&b.paidAmount?numFmt(b.paidAmount):''}" oninput="formatMoneyInput(this); updateBookPurchaseCalc();" placeholder="۰"></div>
+      <div class="field"><label>مبلغ پرداخت‌شده تاکنون</label><input id="f-bp-paid" class="money-input" value="${esc(b&&b.paidAmount?numFmt(b.paidAmount):'')}" oninput="formatMoneyInput(this); updateBookPurchaseCalc();" placeholder="۰"></div>
       <div class="field"><label>تاریخ پرداخت</label>${jalaliPicker('f-bp-paid-date', b?b.paidDate:null)}</div>
     </div>
     <div class="calc-box"><span>باقیماندهٔ قابل پرداخت به منبع</span><b id="f-bp-remaining-display">${afn(b?(b.totalCost||0)-(b.paidAmount||0):0)}</b></div>
     <div class="field" style="margin-top:12px;"><label>تاریخ سررسید باقیمانده (اختیاری)</label>${jalaliPicker('f-bp-due-date', b?b.dueDate:null)}</div>
 
-    <div class="field"><label>توضیحات</label><input id="f-bp-note" value="${b?b.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-bp-note" value="${esc(b?b.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveBookPurchase(${b?`'${b.id}'`:'null'})">ذخیره</button>
@@ -2472,7 +2479,7 @@ function openBookSourceHistoryModal(source){
   const totalPaid = orders.reduce((s,b)=>s+(Number(b.paidAmount)||0),0);
   const totalRemaining = totalCost - totalPaid;
   openModal(`
-    <h3>سابقهٔ سفارش‌ها · ${source}</h3>
+    <h3>سابقهٔ سفارش‌ها · ${esc(source)}</h3>
     <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:16px;">
       <div class="card c-cost"><div class="label">مجموع سفارش‌ها</div><div class="value cost" style="font-size:15px;">${afn(totalCost)}</div></div>
       <div class="card c-income"><div class="label">مجموع پرداخت‌شده</div><div class="value income" style="font-size:15px;">${afn(totalPaid)}</div></div>
@@ -2482,10 +2489,10 @@ function openBookSourceHistoryModal(source){
       <thead><tr><th>عنوان</th><th>شعبه</th><th>تعداد</th><th>مجموع هزینه</th><th>پرداخت‌شده</th><th>باقیمانده</th><th>تاریخ سفارش</th><th>سررسید</th></tr></thead>
       <tbody>${orders.map(b=>`
         <tr>
-          <td>${b.title}</td><td>${b.branch||'-'}</td><td class="num">${faDigits(b.quantity||0)}</td>
+          <td>${esc(b.title)}</td><td>${esc(b.branch||'-')}</td><td class="num">${faDigits(b.quantity||0)}</td>
           <td class="num">${afn(b.totalCost)}</td><td class="num">${afn(b.paidAmount||0)}</td>
           <td class="num">${afn((b.totalCost||0)-(b.paidAmount||0))}</td>
-          <td>${toJalali(b.date)}</td><td>${b.dueDate?toJalali(b.dueDate):'-'}</td>
+          <td>${toJalali(b.date)}</td><td>${esc(b.dueDate?toJalali(b.dueDate):'-')}</td>
         </tr>
       `).join('')}</tbody>
     </table></div>
@@ -2499,13 +2506,13 @@ function renderBooks(){
   document.getElementById('book-purchases-table').innerHTML = db.bookPurchases.map(b=>{
     const remaining = (b.totalCost||0)-(b.paidAmount||0);
     return `<tr>
-      <td>${b.title}</td><td>${b.source?`<span class="code-badge" onclick="openBookSourceHistoryModal('${b.source.replace(/'/g,"\\'")}')">${b.source}</span>`:'-'}</td><td>${b.branch||'-'}</td><td class="num">${faDigits(b.quantity||0)}</td>
+      <td>${esc(b.title)}</td><td>${b.source?`<span class="code-badge" onclick="openBookSourceHistoryModal('${escJs(b.source.replace(/'/g,"\\'"))}')">${esc(b.source)}</span>`:'-'}</td><td>${esc(b.branch||'-')}</td><td class="num">${faDigits(b.quantity||0)}</td>
       <td class="num">${afn(b.unitCost)}</td><td class="num">${afn(b.totalCost)}</td>
       <td class="num">${afn(b.paidAmount||0)}</td><td class="num">${remaining>0?`<span class="tag cost">${afn(remaining)}</span>`:`<span class="tag income">تسویه</span>`}</td>
-      <td>${b.dueDate?toJalali(b.dueDate):'-'}</td><td>${toJalali(b.date)}</td>
+      <td>${esc(b.dueDate?toJalali(b.dueDate):'-')}</td><td>${toJalali(b.date)}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openBookPurchaseModal('${b.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteBookPurchase('${b.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openBookPurchaseModal('${escJs(b.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteBookPurchase('${escJs(b.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2527,7 +2534,7 @@ function renderBooks(){
     const paid = orders.reduce((s,b)=>s+(Number(b.paidAmount)||0),0);
     const remaining = cost-paid;
     return `<tr>
-      <td><span class="code-badge" onclick="openBookSourceHistoryModal('${src.replace(/'/g,"\\'")}')">${src}</span></td>
+      <td><span class="code-badge" onclick="openBookSourceHistoryModal('${escJs(src.replace(/'/g,"\\'"))}')">${esc(src)}</span></td>
       <td class="num">${faDigits(orders.length)}</td><td class="num">${afn(cost)}</td><td class="num">${afn(paid)}</td>
       <td class="num">${remaining>0?`<span class="tag cost">${afn(remaining)}</span>`:`<span class="tag income">تسویه</span>`}</td>
     </tr>`;
@@ -2537,9 +2544,9 @@ function renderBooks(){
   document.getElementById('book-sales-empty').style.display = sold.length? 'none':'block';
   document.getElementById('book-sales-table').innerHTML = sold.map(s=>`
     <tr>
-      <td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${s.bookTitle||'-'}</td>
-      <td class="num">${s.bookPrice?afn(s.bookPrice):'-'}</td><td>${s.bookTitle?`<span class="tag ${s.bookPaid?'income':'cost'}">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
-      <td class="num">${s.idCardPrice?afn(s.idCardPrice):'-'}</td><td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
+      <td>${esc(profileName(s.profileId))}</td><td>${esc(className(s.classId))}</td><td>${esc(s.bookTitle||'-')}</td>
+      <td class="num">${esc(s.bookPrice?afn(s.bookPrice):'-')}</td><td>${s.bookTitle?`<span class="tag ${s.bookPaid?'income':'cost'}">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
+      <td class="num">${esc(s.idCardPrice?afn(s.idCardPrice):'-')}</td><td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${toJalali(s.registerDate)}</td>
     </tr>
   `).join('');
@@ -2579,7 +2586,7 @@ function renderBooks(){
         <div class="trend-chart-bar" style="background:var(--cost); height:${Math.max(4,(d.cost/max)*105)}px;" title="هزینه: ${afn(d.cost)}"></div>
         <div class="trend-chart-bar" style="background:var(--brand); height:${Math.max(4,(Math.abs(d.profit)/max)*105)}px;" title="سود: ${afn(d.profit)}"></div>
       </div>
-      <div class="trend-chart-label">${d.label}</div>
+      <div class="trend-chart-label">${esc(d.label)}</div>
     </div>
   `).join('');
 }
@@ -2592,13 +2599,13 @@ function openShareholderModal(id){
   const sh = id ? db.shareholders.find(x=>x.id===id) : null;
   openModal(`
     <h3>${sh?'ویرایش سهامدار':'سهامدار جدید'}</h3>
-    ${sh?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${sh.code||'-'}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
-    <div class="field"><label>نام</label><input id="f-sh-name" value="${sh?sh.name:''}"></div>
+    ${sh?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(sh.code||'-')}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
+    <div class="field"><label>نام</label><input id="f-sh-name" value="${esc(sh?sh.name:'')}"></div>
     <div class="field-row">
-      <div class="field"><label>سهم از سود (٪)</label><input id="f-sh-share" type="number" min="0" max="100" value="${sh?sh.sharePercent||'':''}"></div>
-      <div class="field"><label>شماره تماس</label><input id="f-sh-phone" value="${sh?sh.phone||'':''}"></div>
+      <div class="field"><label>سهم از سود (٪)</label><input id="f-sh-share" type="number" min="0" max="100" value="${esc(sh?sh.sharePercent||'':'')}"></div>
+      <div class="field"><label>شماره تماس</label><input id="f-sh-phone" value="${esc(sh?sh.phone||'':'')}"></div>
     </div>
-    <div class="field"><label>توضیحات</label><input id="f-sh-note" value="${sh?sh.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-sh-note" value="${esc(sh?sh.note||'':'')}"></div>
     <p class="hint">مجموع سهم همهٔ سهامداران بهتر است ۱۰۰٪ باشد؛ در حال حاضر مجموع = <b id="sh-total-check"></b></p>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
@@ -2633,31 +2640,31 @@ function openShareholderProfileModal(id){
   const sh = db.shareholders.find(x=>x.id===id); if(!sh) return;
   openModal(`
     <h3>پروندهٔ سهامدار</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${sh.code||'-'}</span> · سهم: ${faDigits(sh.sharePercent||0)}٪</p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(sh.code||'-')}</span> · سهم: ${faDigits(sh.sharePercent||0)}٪</p>
     <div class="panel" style="background:var(--panel-2); padding:12px 14px; margin-bottom:16px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <span style="font-size:12.5px; color:var(--text-dim);">رمز عبور ورود این سهامدار:</span>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="code-badge" style="cursor:default;">${sh.password||'-'}</span>
-          <button class="btn ghost small" onclick="regenerateShareholderPassword('${sh.id}')">تولید رمز جدید</button>
+          <span class="code-badge" style="cursor:default;">${esc(sh.password||'-')}</span>
+          <button class="btn ghost small" onclick="regenerateShareholderPassword('${escJs(sh.id)}')">تولید رمز جدید</button>
         </div>
       </div>
     </div>
     <div class="profile-grid">
       <div class="upload-box">
         <label>عکس سهامدار</label>
-        ${sh.photo?`<img src="${sh.photo}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const s=db.shareholders.find(x=>x.id==='${sh.id}'); s.photo=url; save(); openShareholderProfileModal('${sh.id}'); })">
+        ${sh.photo?`<img src="${esc(sh.photo)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const s=db.shareholders.find(x=>x.id==='${escJs(sh.id)}'); s.photo=url; save(); openShareholderProfileModal('${escJs(sh.id)}'); })">
       </div>
       <div class="upload-box">
         <label>عکس سند هویت</label>
-        ${sh.idPhoto?`<img src="${sh.idPhoto}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const s=db.shareholders.find(x=>x.id==='${sh.id}'); s.idPhoto=url; save(); openShareholderProfileModal('${sh.id}'); })">
+        ${sh.idPhoto?`<img src="${esc(sh.idPhoto)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const s=db.shareholders.find(x=>x.id==='${escJs(sh.id)}'); s.idPhoto=url; save(); openShareholderProfileModal('${escJs(sh.id)}'); })">
       </div>
     </div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">بستن</button>
-      <button class="btn" onclick="closeModal(); openShareholderModal('${sh.id}');">ویرایش اطلاعات</button>
+      <button class="btn" onclick="closeModal(); openShareholderModal('${escJs(sh.id)}');">ویرایش اطلاعات</button>
     </div>
   `, {wide:true});
 }
@@ -2680,11 +2687,11 @@ function renderShareholders(){
   document.getElementById('shareholders-empty').style.display = db.shareholders.length? 'none':'block';
   document.getElementById('shareholders-table').innerHTML = db.shareholders.map(sh=>`
     <tr>
-      <td><span class="code-badge" onclick="openShareholderProfileModal('${sh.id}')">${sh.code||'-'}</span></td>
-      <td>${sh.name}</td><td class="num">${faDigits(sh.sharePercent||0)}٪</td><td>${sh.phone||'-'}</td>
+      <td><span class="code-badge" onclick="openShareholderProfileModal('${escJs(sh.id)}')">${esc(sh.code||'-')}</span></td>
+      <td>${esc(sh.name)}</td><td class="num">${faDigits(sh.sharePercent||0)}٪</td><td>${esc(sh.phone||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openShareholderModal('${sh.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteShareholder('${sh.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openShareholderModal('${escJs(sh.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteShareholder('${escJs(sh.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>
   `).join('');
@@ -2692,7 +2699,7 @@ function renderShareholders(){
   const net = institutionNetProfit();
   document.getElementById('shareholder-split-cards').innerHTML = db.shareholders.map(sh=>{
     const share = Math.round(net * (Number(sh.sharePercent)||0)/100);
-    return `<div class="card c-profit"><div class="label">${sh.name} (${faDigits(sh.sharePercent||0)}٪)</div><div class="value profit">${afn(share)}</div></div>`;
+    return `<div class="card c-profit"><div class="label">${esc(sh.name)} (${faDigits(sh.sharePercent||0)}٪)</div><div class="value profit">${afn(share)}</div></div>`;
   }).join('') + `<div class="card c-income"><div class="label">سود خالص کل مؤسسه (همهٔ منابع)</div><div class="value income">${afn(net)}</div></div>`;
 }
 
@@ -2712,12 +2719,12 @@ function renderActivityLog(){
   const { pageItems, totalPages } = paginateList('activityLog', log);
   tbl.innerHTML = pageItems.map(l=>`
     <tr>
-      <td style="white-space:nowrap;">${formatLogTime(l.ts)}</td>
-      <td><span class="tag info">${ROLE_LABELS[l.role]||l.role}</span></td>
-      <td>${l.actor}</td>
-      <td>${l.action}</td>
-      <td>${l.entityType}</td>
-      <td>${l.label||''}</td>
+      <td style="white-space:nowrap;">${esc(formatLogTime(l.ts))}</td>
+      <td><span class="tag info">${esc(ROLE_LABELS[l.role]||l.role)}</span></td>
+      <td>${esc(l.actor)}</td>
+      <td>${esc(l.action)}</td>
+      <td>${esc(l.entityType)}</td>
+      <td>${esc(l.label||'')}</td>
     </tr>
   `).join('');
   renderPaginationControls('activity-log-pagination', 'activityLog', totalPages, 'renderActivityLog');
@@ -2811,7 +2818,7 @@ function renderAttendanceClassOptions(){
   let classList = db.classes;
   if(currentRole==='teacher') classList = classList.filter(c=>c.teacherId===currentTeacherId);
   sel.innerHTML = '<option value="">انتخاب کنید</option>' + classList.map(c=>
-    `<option value="${c.id}">${c.name||c.category} · ${c.branch||'-'}</option>`
+    `<option value="${esc(c.id)}">${esc(c.name||c.category)} · ${esc(c.branch||'-')}</option>`
   ).join('');
   if(classList.some(c=>c.id===prevVal)) sel.value = prevVal;
   renderAttendanceGrid();
@@ -2853,10 +2860,10 @@ function renderClassMarks(classId, enrolled, force){
   const val = v => (v!=='' && v!==undefined && v!==null) ? v : '';
   const rows = enrolled.map(s=>`
     <tr>
-      <td>${profileName(s.profileId)}</td>
-      <td><input type="number" min="0" max="100" id="mk-act__${s.id}" value="${val(s.activityScore)}" style="width:82px;"></td>
-      <td><input type="number" min="0" max="100" id="mk-mid__${s.id}" value="${val(s.midtermScore)}" style="width:82px;"></td>
-      <td><input type="number" min="0" max="100" id="mk-fin__${s.id}" value="${val(s.examScore)}" style="width:82px;"></td>
+      <td>${esc(profileName(s.profileId))}</td>
+      <td><input type="number" min="0" max="100" id="mk-act__${esc(s.id)}" value="${esc(val(s.activityScore))}" style="width:82px;"></td>
+      <td><input type="number" min="0" max="100" id="mk-mid__${esc(s.id)}" value="${esc(val(s.midtermScore))}" style="width:82px;"></td>
+      <td><input type="number" min="0" max="100" id="mk-fin__${esc(s.id)}" value="${esc(val(s.examScore))}" style="width:82px;"></td>
     </tr>`).join('');
   wrap.innerHTML = `<div class="table-scroll"><table><thead><tr><th>شاگرد</th><th>فعالیت صنفی</th><th>میان‌ترم</th><th>فاینل</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   marksRenderedClassId = classId;
@@ -2896,7 +2903,7 @@ function renderAttendanceGrid(){
   const isAct = attendanceMode==='activity';
 
   const head = `<th style="position:sticky; right:0; background:var(--panel-2); min-width:150px;">شاگرد</th>` +
-    dates.map(d=>{ const p=g2jParts(d); return `<th style="min-width:42px; font-size:10px; line-height:1.35; white-space:nowrap;">${faDigits(p[2])}<br>${AFG_MONTHS[p[1]-1]}</th>`; }).join('') +
+    dates.map(d=>{ const p=g2jParts(d); return `<th style="min-width:42px; font-size:10px; line-height:1.35; white-space:nowrap;">${faDigits(p[2])}<br>${esc(AFG_MONTHS[p[1]-1])}</th>`; }).join('') +
     `<th style="min-width:70px;">${isAct?'مثبت/منفی':'حاضر/غایب'}</th>`;
   const rows = enrolledPage.map(s=>{
     const cells = dates.map(d=>{
@@ -2905,17 +2912,17 @@ function renderAttendanceGrid(){
         const mark = rec && rec.part ? rec.part[s.id] : undefined;
         const symbol = mark==='+' ? '＋' : mark==='-' ? '－' : '·';
         const color = mark==='+' ? 'var(--income)' : mark==='-' ? 'var(--cost)' : 'var(--text-faint)';
-        return `<td id="${attCellId(classId,d,s.id)}" style="text-align:center; cursor:pointer; color:${color}; font-weight:700;" onclick="cycleActivity('${classId}','${d}','${s.id}')">${symbol}</td>`;
+        return `<td id="${esc(attCellId(classId,d,s.id))}" style="text-align:center; cursor:pointer; color:${esc(color)}; font-weight:700;" onclick="cycleActivity('${escJs(classId)}','${escJs(d)}','${escJs(s.id)}')">${esc(symbol)}</td>`;
       }
       const mark = rec ? rec.marks[s.id] : undefined;
       const symbol = mark===true ? '✓' : mark===false ? '✕' : '-';
       const color = mark===true ? 'var(--income)' : mark===false ? 'var(--cost)' : 'var(--text-faint)';
-      return `<td id="${attCellId(classId,d,s.id)}" style="text-align:center; cursor:pointer; color:${color}; font-weight:700;" onclick="cycleAttendance('${classId}','${d}','${s.id}')">${symbol}</td>`;
+      return `<td id="${esc(attCellId(classId,d,s.id))}" style="text-align:center; cursor:pointer; color:${esc(color)}; font-weight:700;" onclick="cycleAttendance('${escJs(classId)}','${escJs(d)}','${escJs(s.id)}')">${esc(symbol)}</td>`;
     }).join('');
     let summary;
     if(isAct){ const p=studentParticipationTotals(classId,s.id); summary=`<span style="color:var(--income);">+${faDigits(p.plus)}</span> / <span style="color:var(--cost);">−${faDigits(p.minus)}</span>`; }
     else { const t=studentAttendanceTotals(classId,s.id); summary=`${faDigits(t.present)} / ${faDigits(t.absent)}`; }
-    return `<tr><td style="position:sticky; right:0; background:var(--panel);">${profileName(s.profileId)}</td>${cells}<td class="num" id="att-summary__${classId}__${s.id}">${summary}</td></tr>`;
+    return `<tr><td style="position:sticky; right:0; background:var(--panel);">${esc(profileName(s.profileId))}</td>${cells}<td class="num" id="att-summary__${esc(classId)}__${esc(s.id)}">${summary}</td></tr>`;
   }).join('');
 
   const hint = isAct
@@ -3006,7 +3013,7 @@ function renderMonthlyTrend(){
         <div class="trend-chart-bar" style="background:var(--cost); height:${Math.max(4,(d.cost/max)*105)}px;" title="هزینه: ${afn(d.cost)}"></div>
         <div class="trend-chart-bar" style="background:var(--brand); height:${Math.max(4,(Math.abs(d.profit)/max)*105)}px;" title="باقیمانده: ${afn(d.profit)}"></div>
       </div>
-      <div class="trend-chart-label">${d.label}</div>
+      <div class="trend-chart-label">${esc(d.label)}</div>
     </div>
   `).join('');
 }
@@ -3059,7 +3066,7 @@ function renderReport(){
   const byCat = {};
   exps.forEach(e=>{ byCat[e.category] = (byCat[e.category]||0) + (Number(e.amount)||0); });
   const rows = Object.keys(byCat).length
-    ? Object.entries(byCat).map(([cat,amt])=>`<tr><td>${cat}</td><td class="num">${afn(amt)}</td></tr>`).join('')
+    ? Object.entries(byCat).map(([cat,amt])=>`<tr><td>${esc(cat)}</td><td class="num">${afn(amt)}</td></tr>`).join('')
     : `<tr><td colspan="2" class="empty">هزینهی در این بازه ثبت نشده.</td></tr>`;
   document.getElementById('report-expense-breakdown').innerHTML = rows;
 
@@ -3084,7 +3091,7 @@ function renderReport(){
 
   document.getElementById('report-branch-breakdown').innerHTML = branchStats.map(d=>`
     <tr>
-      <td>${d.branch}</td>
+      <td>${esc(d.branch)}</td>
       <td class="num">${faDigits(d.activeBranchClasses)}</td>
       <td class="num">${faDigits(d.studentCount)} ${pct(d.studentCount, totStudents)}</td>
       <td class="num">${afn(d.branchIncome)} ${pct(d.branchIncome, totIncome)}</td>
@@ -3137,18 +3144,18 @@ function renderSeasonComparison(){
     const pct = Math.round(diff/Math.abs(prevVal)*100);
     const sign = diff>=0 ? '+' : '−';
     const color = diff>=0 ? 'var(--income)' : 'var(--cost)';
-    return ` <span style="color:${color}; font-size:11px;">(${sign}${faDigits(Math.abs(pct))}٪)</span>`;
+    return ` <span style="color:${esc(color)}; font-size:11px;">(${esc(sign)}${faDigits(Math.abs(pct))}٪)</span>`;
   };
 
   document.getElementById('season-comparison-table').innerHTML = rows.length ? rows.map((r,i)=>{
     const prev = i>0 ? rows[i-1] : null;
     return `<tr>
       <td>${faDigits(r.y)}</td>
-      <td class="num">${faDigits(r.classesCount)}${prev?chg(r.classesCount,prev.classesCount):''}</td>
-      <td class="num">${faDigits(r.studentsCount)}${prev?chg(r.studentsCount,prev.studentsCount):''}</td>
-      <td class="num">${afn(r.income)}${prev?chg(r.income,prev.income):''}</td>
-      <td class="num">${afn(r.cost)}${prev?chg(r.cost,prev.cost):''}</td>
-      <td class="num"><b style="color:${r.profit>=0?'var(--gold-soft)':'var(--cost)'};">${afn(r.profit)}</b>${prev?chg(r.profit,prev.profit):''}</td>
+      <td class="num">${faDigits(r.classesCount)}${esc(prev?chg(r.classesCount,prev.classesCount):'')}</td>
+      <td class="num">${faDigits(r.studentsCount)}${esc(prev?chg(r.studentsCount,prev.studentsCount):'')}</td>
+      <td class="num">${afn(r.income)}${esc(prev?chg(r.income,prev.income):'')}</td>
+      <td class="num">${afn(r.cost)}${esc(prev?chg(r.cost,prev.cost):'')}</td>
+      <td class="num"><b style="color:${r.profit>=0?'var(--gold-soft)':'var(--cost)'};">${afn(r.profit)}</b>${esc(prev?chg(r.profit,prev.profit):'')}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="6" class="empty">داده‌ای برای این فصل ثبت نشده.</td></tr>`;
 }
@@ -3182,24 +3189,24 @@ function populateGateSelects(){
   const sel = document.getElementById('gate-teacher-select');
   if(sel){
     sel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      db.teachers.filter(t=>t.role==='مدرس').map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+      db.teachers.filter(t=>t.role==='مدرس').map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
   const shSel = document.getElementById('gate-shareholder-select');
   if(shSel){
     shSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      db.shareholders.map(sh=>`<option value="${sh.id}">${sh.name}</option>`).join('');
+      db.shareholders.map(sh=>`<option value="${esc(sh.id)}">${esc(sh.name)}</option>`).join('');
   }
   const mgrSel = document.getElementById('gate-manager-select');
   if(mgrSel){
     const managers = db.teachers.filter(t=>t.role==='مدیریت');
     mgrSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      managers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+      managers.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
   const empSel = document.getElementById('gate-employee-select');
   if(empSel){
     const employees = db.teachers.filter(t=>t.role==='کارمند');
     empSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      employees.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+      employees.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
 }
 (function initAccessGate(){
@@ -3208,7 +3215,7 @@ function populateGateSelects(){
   if(genBox && migrationGeneratedPasswords.length){
     genBox.style.display = 'block';
     genBox.innerHTML = '<b>رمزهای عبور تازه‌ساخته‌شده برای این داده‌ها (فقط یک‌بار نمایش داده می‌شود، جایی یادداشت کنید):</b><br>' +
-      migrationGeneratedPasswords.map(p=>`${p.name} (${p.role}, ${p.code}): <b class="code-badge" style="cursor:default;">${p.password}</b>`).join('<br>');
+      migrationGeneratedPasswords.map(p=>`${esc(p.name)} (${esc(p.role)}, ${esc(p.code)}): <b class="code-badge" style="cursor:default;">${esc(p.password)}</b>`).join('<br>');
   }
   if(currentRole && (currentRole!=='teacher' || currentTeacherId) && (currentRole!=='student' || currentStudentId) && currentActorName){
     applyRoleVisibility();
