@@ -694,6 +694,15 @@
         <input id="restore-file-input" type="file" accept="application/json" onchange="importBackup(this)">
       </div>
       <div class="panel">
+        <div class="panel-head"><h2>تنظیمات چاپ رسید</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">رسید ثبت‌نام روی رول حرارتی ۸۰ میلی‌متری چاپ می‌شود. جهت چاپ را انتخاب کنید: «عمودی» یک رسید باریک است و «افقی» رسید را به‌صورت چرخیده در طول رول چاپ می‌کند. این انتخاب برای همین دستگاه ذخیره می‌شود و در پنجرهٔ چاپ هم قابل تغییر است.</p>
+        <div class="field-row">
+          <div class="field"><label for="f-print-size">اندازهٔ کاغذ</label><select id="f-print-size"></select></div>
+          <div class="field"><label for="f-print-orient">جهت چاپ رسید</label><select id="f-print-orient"><option value="portrait">عمودی</option><option value="landscape">افقی</option></select></div>
+        </div>
+        <button type="button" class="btn" onclick="savePrintSettings()">ذخیرهٔ تنظیمات چاپ</button>
+      </div>
+      <div class="panel">
         <div class="panel-head"><h2>همگام‌سازی با سرور (داده‌های مشترک)</h2></div>
         <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">داده‌های سامانه روی سرور نگهداری و بین همهٔ دستگاه‌ها به اشتراک گذاشته می‌شود؛ هر تغییری که هر کاربر انجام دهد، برای بقیه هم دیده می‌شود. اگر داده‌های همین مرورگر درست‌تر است و می‌خواهید آن را نسخهٔ مشترک همه کنید، از دکمهٔ زیر استفاده کنید.</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
@@ -884,10 +893,10 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="js/seed.js?v=2.0"></script>
-  <script src="js/app.js?v=4.3"></script>
+  <script src="js/app.js?v=4.4"></script>
   <script src="js/discount-codes.js?v=1.1"></script>
-  <script src="js/updates.js?v=1.7"></script>
-  <script src="js/updates2.js?v=1.1"></script>
+  <script src="js/updates.js?v=1.8"></script>
+  <script src="js/updates2.js?v=1.2"></script>
   <script src="js/sync.js?v=2.0"></script>
 </body>
 </html>

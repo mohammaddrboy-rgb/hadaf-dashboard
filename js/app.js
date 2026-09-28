@@ -771,7 +771,7 @@ function downloadWorkbookFromRows(rowsByCategory, filenamePrefix){
 function classesToRows(list){
   return list.map(c=>({
     'نام صنف': c.name||c.category, 'شعبه': c.branch||'', 'دسته': c.category, 'مدرس': teacherName(c.teacherId),
-    'شیوه': c.mode||'', 'ساعت': classTimeLabel(c), 'تاریخ آغاز': toJalali(c.startDate), 'تاریخ پایان': c.endDate?toJalali(c.endDate):'نامشخص',
+    'شیوه': c.mode||'', 'ساعت': classTimeLabel(c), 'تاریخ آغاز': toJalali(c.startDate), 'تاریخ پایان': toJalali(classEndDate(c)), 'تعداد جلسات': classSessionDates(c).length,
     'ظرفیت': c.capacity||'', 'تعداد ثبت‌نامی': classEnrolledCount(c.id), 'وضعیت': classStatus(c),
     'پیشرفت (%)': c.progress||0, 'مکان': c.location||'', 'توضیحات': c.note||'',
   }));
@@ -826,7 +826,7 @@ function expensesToRows(list){
 function projectsToRows(list){
   return list.map(p=>({
     'نام پروژه': p.name, 'دسته': p.category, 'مسئول': p.lead||'', 'تاریخ آغاز': toJalali(p.startDate),
-    'تاریخ پایان': p.endDate?toJalali(p.endDate):'نامشخص', 'وضعیت': classStatus(p), 'پیشرفت (%)': p.progress||0, 'توضیحات': p.note||'',
+    'تاریخ پایان': p.endDate?toJalali(p.endDate):'نامشخص', 'وضعیت': dateRangeStatus(p), 'پیشرفت (%)': p.progress||0, 'توضیحات': p.note||'',
   }));
 }
 function meetingsToRows(list){
@@ -933,9 +933,58 @@ function classTimeLabel(c){
   if(c.startTime && c.endTime) return `${formatTimeAmPm(c.startTime)} تا ${formatTimeAmPm(c.endTime)}`;
   return formatTimeAmPm(c.startTime||c.endTime);
 }
+/* ---------------- Class schedule ----------------
+   Classes meet 6 days a week, Saturday to Thursday (Friday is off). A class is
+   defined by its start date (chosen freely) and its number of sessions; the
+   end date is the date of the last session. */
+const CLASS_DEFAULT_SESSIONS = 26; // ≈ one month at 6 sessions per week
+const WEEKDAY_NAMES = ['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه']; // index = Date.getDay()
+function isClassDay(iso){ return new Date(iso+'T00:00:00').getDay()!==5; }
+function weekdayName(iso){ return WEEKDAY_NAMES[new Date(iso+'T00:00:00').getDay()]; }
+/* The first `count` class days (Sat–Thu) on or after `startISO`. */
+function classSessionsFrom(startISO, count){
+  const dates = [];
+  if(!startISO || !(count>0)) return dates;
+  const d = new Date(startISO+'T00:00:00');
+  if(isNaN(d.getTime())) return dates;
+  while(dates.length < count){
+    if(d.getDay()!==5) dates.push(dateToISO(d));
+    d.setDate(d.getDate()+1);
+  }
+  return dates;
+}
+/* All session dates of a class. Classes saved with an end date use every
+   Sat–Thu day up to it; older classes saved without one get the standard
+   number of sessions (previously they only listed days up to today). */
+function classSessionDates(c){
+  if(!c || !c.startDate) return [];
+  if(!c.endDate) return classSessionsFrom(c.startDate, Number(c.sessionCount)||CLASS_DEFAULT_SESSIONS);
+  const dates = [];
+  const d = new Date(c.startDate+'T00:00:00');
+  const endD = new Date(c.endDate+'T00:00:00');
+  while(d<=endD){
+    if(d.getDay()!==5) dates.push(dateToISO(d));
+    d.setDate(d.getDate()+1);
+  }
+  return dates;
+}
+function classEndDate(c){
+  if(!c) return '';
+  if(c.endDate) return c.endDate;
+  const dates = classSessionDates(c);
+  return dates.length ? dates[dates.length-1] : '';
+}
+/* Status from a plain start/end date range (projects etc.): no end date = ongoing. */
+function dateRangeStatus(item){
+  const today = todayISO();
+  if(item.endDate && today>item.endDate) return 'پایان‌یافته';
+  if(item.startDate && today<item.startDate) return 'آینده';
+  return 'در حال برگزاری';
+}
 function classStatus(cls){
   const today = todayISO();
-  if(cls.endDate && today>cls.endDate) return 'پایان‌یافته';
+  const end = classEndDate(cls);
+  if(end && today>end) return 'پایان‌یافته';
   if(cls.startDate && today<cls.startDate) return 'آینده';
   return 'در حال برگزاری';
 }
@@ -944,16 +993,15 @@ function classStatusTagClass(st){
   if(st==='آینده') return 'info';
   return 'income';
 }
-/* Progress driven by elapsed time: start→end is 0→100%.
-   Each course runs ~one month (26 sessions); if no end date, assume start + 1 month.
+/* Progress driven by elapsed time: start→end (last session) is 0→100%.
    Finished class → 100%, not-yet-started → 0%. */
 function classTimeProgress(c){
   if(!c || !c.startDate) return 0;
   const start = new Date(c.startDate+'T00:00:00');
   if(isNaN(start.getTime())) return 0;
   let end;
-  if(c.endDate){ end = new Date(c.endDate+'T00:00:00'); }
-  else { end = new Date(start.getTime()); end.setMonth(end.getMonth()+1); }
+  const endISO = classEndDate(c);
+  end = new Date(endISO+'T00:00:00');
   const now = new Date(); now.setHours(0,0,0,0);
   if(now <= start) return 0;
   if(now >= end) return 100;
@@ -1049,23 +1097,41 @@ function openClassModal(id){
       <div class="field"><label>ساعت آغاز</label><input id="f-cls-start-time" type="time" value="${esc(c?c.startTime||'':'')}"></div>
       <div class="field"><label>ساعت پایان</label><input id="f-cls-end-time" type="time" value="${esc(c?c.endTime||'':'')}"></div>
     </div>
-    <div class="field"><label>تاریخ آغاز</label>${jalaliPicker('f-cls-start', c?c.startDate:null)}</div>
-    <div class="field">
-      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" id="f-cls-has-end" style="width:auto;" ${c&&c.endDate?'checked':''} onchange="document.getElementById('f-cls-end-container').style.display=this.checked?'block':'none';">
-        تاریخ پایان مشخص است
-      </label>
-      <div id="f-cls-end-container" style="margin-top:8px; ${c&&c.endDate?'':'display:none;'}">
-        ${jalaliPicker('f-cls-end', c?c.endDate:null)}
-      </div>
+    <div class="field-row">
+      <div class="field"><label>تاریخ آغاز (روز اول صنف)</label>${jalaliPicker('f-cls-start', c?c.startDate:null)}</div>
+      <div class="field"><label>تعداد جلسات</label><input id="f-cls-sessions" type="number" min="1" max="400" value="${c ? (classSessionDates(c).length||CLASS_DEFAULT_SESSIONS) : CLASS_DEFAULT_SESSIONS}" oninput="updateClassSchedulePreview()"></div>
     </div>
+    <p class="hint" style="margin:-4px 0 12px;">صنف‌ها ۶ روز در هفته، از شنبه تا پنجشنبه برگزار می‌شوند (جمعه رخصتی). تاریخ پایان از روی تاریخ آغاز و تعداد جلسات محاسبه می‌شود.</p>
+    <div id="f-cls-schedule" style="font-size:12.5px; margin:-4px 0 14px; padding:10px 12px; border-radius:var(--radius-sm); background:var(--panel-2); line-height:1.8;"></div>
     <div class="field"><label>سالن/اتاق (اختیاری)</label><input id="f-cls-location" value="${esc(c?c.location||'':'')}" placeholder="مثلاً: اتاق ۲"></div>
     <div class="field"><label>توضیحات</label><input id="f-cls-note" value="${esc(c?c.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
-      <button class="btn" onclick="saveClass(${c?`'${c.id}'`:'null'})">ذخیره</button>
+      <button class="btn" onclick="saveClass(${c?`'${escJs(c.id)}'`:'null'})">ذخیره</button>
     </div>
   `);
+  const wrap = document.getElementById('f-cls-start-wrap');
+  if(wrap) wrap.addEventListener('change', updateClassSchedulePreview);
+  updateClassSchedulePreview();
+}
+function classFormSessionCount(){
+  const n = Math.round(Number(document.getElementById('f-cls-sessions').value));
+  return n>0 ? Math.min(n, 400) : 0;
+}
+/* Live preview of the session dates in the class form. */
+function updateClassSchedulePreview(){
+  const box = document.getElementById('f-cls-schedule'); if(!box) return;
+  const n = classFormSessionCount();
+  if(!n){ box.innerHTML = '<span style="color:var(--cost);">تعداد جلسات را وارد کنید.</span>'; return; }
+  const start = jalaliPickerValue('f-cls-start');
+  const dates = classSessionsFrom(start, n);
+  const fmt = d => `${esc(weekdayName(d))} ${toJalali(d)}`;
+  const fridayNote = isClassDay(start) ? '' : `<div style="color:var(--gold-soft);">تاریخ انتخاب‌شده جمعه است؛ صنف از شنبه آغاز می‌شود.</div>`;
+  const weeks = Math.ceil(n/6);
+  box.innerHTML = `${fridayNote}
+    <div>جلسهٔ اول: <b>${fmt(dates[0])}</b></div>
+    <div>جلسهٔ آخر (تاریخ پایان): <b>${fmt(dates[dates.length-1])}</b></div>
+    <div style="color:var(--text-dim);">${faDigits(n)} جلسه · حدود ${faDigits(weeks)} هفته · شنبه تا پنجشنبه</div>`;
 }
 function quickAddTeacher(){
   const name = prompt('نام مدرس جدید را وارد کنید:');
@@ -1082,7 +1148,9 @@ function quickAddTeacher(){
   }
 }
 function saveClass(id){
-  const hasEnd = document.getElementById('f-cls-has-end').checked;
+  const sessionCount = classFormSessionCount();
+  if(!sessionCount){ alert('تعداد جلسات را وارد کنید.'); return; }
+  const sessions = classSessionsFrom(jalaliPickerValue('f-cls-start'), sessionCount);
   const rec = {
     id: id || uid(),
     branch: document.getElementById('f-cls-branch').value,
@@ -1093,8 +1161,9 @@ function saveClass(id){
     capacity: Number(document.getElementById('f-cls-capacity').value)||0,
     startTime: document.getElementById('f-cls-start-time').value,
     endTime: document.getElementById('f-cls-end-time').value,
-    startDate: jalaliPickerValue('f-cls-start'),
-    endDate: hasEnd ? jalaliPickerValue('f-cls-end') : '',
+    startDate: sessions[0],               // a Friday start moves to the next Saturday
+    endDate: sessions[sessions.length-1],
+    sessionCount,
     location: document.getElementById('f-cls-location').value.trim(),
     note: document.getElementById('f-cls-note').value.trim(),
   };
@@ -1471,9 +1540,10 @@ function openStudentProfileModal(profileId){
       <td>${s.bookTitle?`${esc(s.bookTitle)} <span class="tag ${s.bookPaid?'income':'cost'}" style="margin-right:4px;">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${s.result ? `<span class="tag ${resultTagClass(s.result)}">${esc(s.result)}</span>` : '<span class="tag info">در حال آموزش</span>'}</td>
+      <td><button class="btn ghost small" onclick="printStudentProfile('${escJs(p.id)}','${escJs(s.id)}')">رسید</button></td>
     </tr>
   `;
-  }).join('') : `<tr><td colspan="16" class="empty">هنوز در صنفی ثبت‌نام نشده.</td></tr>`;
+  }).join('') : `<tr><td colspan="17" class="empty">هنوز در صنفی ثبت‌نام نشده.</td></tr>`;
 
   const referredByEnrollment = rows.find(s=>s.referredBy);
   const referrerProfile = referredByEnrollment ? profileById(referredByEnrollment.referredBy) : null;
@@ -1512,7 +1582,7 @@ function openStudentProfileModal(profileId){
 
     <div class="sectiontitle">سابقهٔ صنف‌ها، نمرات و نتیجه</div>
     <div class="table-scroll"><table>
-      <thead><tr><th>صنف</th><th>شعبه</th><th>تاریخ ثبت‌نام</th><th>وضعیت صنف</th><th>تخفیف</th><th>شهریهٔ نهایی</th><th>باقیمانده</th><th>حاضر</th><th>غایب</th><th class="num">فعالیت صنفی</th><th class="num">میان‌ترم</th><th class="num">فاینل</th><th>فعالیت روزانه (+/−)</th><th>کتاب</th><th>کارت شاگردی</th><th>نتیجه</th></tr></thead>
+      <thead><tr><th>صنف</th><th>شعبه</th><th>تاریخ ثبت‌نام</th><th>وضعیت صنف</th><th>تخفیف</th><th>شهریهٔ نهایی</th><th>باقیمانده</th><th>حاضر</th><th>غایب</th><th class="num">فعالیت صنفی</th><th class="num">میان‌ترم</th><th class="num">فاینل</th><th>فعالیت روزانه (+/−)</th><th>کتاب</th><th>کارت شاگردی</th><th>نتیجه</th><th>چاپ</th></tr></thead>
       <tbody>${historyRows}</tbody>
     </table></div>
 
@@ -2042,7 +2112,7 @@ function renderDashboard(){
   document.getElementById('dash-classes-empty').style.display = db.classes.length? 'none':'block';
   document.getElementById('dash-classes').innerHTML = classesPage.map(c=>{
     const st = classStatus(c);
-    return `<tr><td>${esc(c.name||c.category)}</td><td>${esc(teacherName(c.teacherId))}</td><td>${toJalali(c.startDate)}</td><td>${esc(c.endDate?toJalali(c.endDate):'نامشخص')}</td>
+    return `<tr><td>${esc(c.name||c.category)}</td><td>${esc(teacherName(c.teacherId))}</td><td>${toJalali(c.startDate)}</td><td>${toJalali(classEndDate(c))}</td>
     <td class="num">${faDigits(classEnrolledCount(c.id))}${esc(c.capacity?'/'+faDigits(c.capacity):'')}</td>
     <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td></tr>`;
   }).join('');
@@ -2083,7 +2153,7 @@ function renderClasses(){
     return `<tr>
       <td>${esc(c.name||'-')}</td><td>${esc(c.branch||'-')}</td><td>${esc(c.category)}</td><td>${esc(teacherName(c.teacherId))}</td><td>${esc(c.mode||'-')}</td>
       <td style="white-space:nowrap;">${esc(classTimeLabel(c))}</td>
-      <td>${toJalali(c.startDate)}</td><td>${esc(c.endDate?toJalali(c.endDate):'نامشخص')}</td>
+      <td>${toJalali(c.startDate)}</td><td>${toJalali(classEndDate(c))}</td>
       <td class="num">${esc(c.capacity?faDigits(c.capacity):'-')}</td>
       <td class="num">${faDigits(enrolled)}</td>
       <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td>
@@ -2101,7 +2171,7 @@ function renderClasses(){
 function renderProjects(){
   document.getElementById('projects-empty').style.display = db.projects.length? 'none':'block';
   document.getElementById('projects-table').innerHTML = db.projects.map(p=>{
-    const st = classStatus(p);
+    const st = dateRangeStatus(p);
     return `<tr>
       <td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.lead||'-')}</td>
       <td>${toJalali(p.startDate)}</td><td>${esc(p.endDate?toJalali(p.endDate):'نامشخص')}</td>
@@ -2185,6 +2255,7 @@ function renderStudents(){
       <td><span class="tag ${studentStatusTagClass(st)}">${esc(st)}</span></td>
       <td>${s.result?`<span class="tag ${resultTagClass(s.result)}">${esc(s.result)}</span>`:'<span class="tag info">در حال آموزش</span>'}</td>
       <td><div class="row-actions">
+        <button class="icon-btn" onclick="printStudentProfile('${escJs(s.profileId)}','${escJs(s.id)}')" title="چاپ رسید این ثبت‌نام"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg></button>
         <button class="icon-btn" onclick="openStudentModal('${escJs(s.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteStudent('${escJs(s.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
@@ -2724,20 +2795,6 @@ function saveReferralSettings(){
 }
 
 /* ---------------- Attendance ---------------- */
-function classSessionDates(c){
-  if(!c.startDate) return [];
-  const end = c.endDate || todayISO();
-  const dates = [];
-  let d = new Date(c.startDate+'T00:00:00');
-  const endD = new Date(end+'T00:00:00');
-  while(d<=endD){
-    if(d.getDay()!==5){ // 5 = Friday (day off)
-      dates.push(dateToISO(d));
-    }
-    d.setDate(d.getDate()+1);
-  }
-  return dates;
-}
 function attendanceRecord(classId, date){
   return db.attendance.find(a=>a.classId===classId && a.date===date);
 }
@@ -2856,7 +2913,7 @@ function renderAttendanceGrid(){
   const isAct = attendanceMode==='activity';
 
   const head = `<th style="position:sticky; right:0; background:var(--panel-2); min-width:150px;">شاگرد</th>` +
-    dates.map(d=>{ const p=g2jParts(d); return `<th style="min-width:42px; font-size:10px; line-height:1.35; white-space:nowrap;">${faDigits(p[2])}<br>${esc(AFG_MONTHS[p[1]-1])}</th>`; }).join('') +
+    dates.map(d=>{ const p=g2jParts(d); return `<th style="min-width:46px; font-size:10px; line-height:1.35; white-space:nowrap;"><span style="color:var(--text-dim);">${esc(weekdayName(d))}</span><br>${faDigits(p[2])}<br>${esc(AFG_MONTHS[p[1]-1])}</th>`; }).join('') +
     `<th style="min-width:70px;">${isAct?'مثبت/منفی':'حاضر/غایب'}</th>`;
   const rows = enrolledPage.map(s=>{
     const cells = dates.map(d=>{
@@ -3124,6 +3181,7 @@ function renderAll(){
   if(typeof renderTaxReport==='function') renderTaxReport();
   if(typeof renderTeacherDiscipline==='function') renderTeacherDiscipline();
   if(typeof renderStudentSelf==='function') renderStudentSelf();
+  if(typeof renderPrintSettings==='function') renderPrintSettings();
   if(document.getElementById('att-class-select') && document.getElementById('att-class-select').value) renderAttendanceGrid();
 }
 renderReportFilterChips();
