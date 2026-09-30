@@ -2354,15 +2354,8 @@ function toggleOpenTask(meetingId, taskId, checked){
 
 /* ---------------- Render: Dashboard ---------------- */
 function renderDashboard(){
-  const activeClasses = db.classes.filter(c=>classStatus(c)==='در حال برگزاری').length;
-  const tot = institutionTotals(null);
-
-  document.getElementById('dash-cards').innerHTML = `
-    <div class="card c-info"><div class="label">صنف‌های در حال برگزاری</div><div class="value info">${faDigits(activeClasses)}</div></div>
-    <div class="card c-income"><div class="label">مجموع درآمد کل مؤسسه</div><div class="value income">${afn(tot.income)}</div></div>
-    <div class="card c-cost"><div class="label">مجموع هزینه‌های کل مؤسسه</div><div class="value cost">${afn(tot.cost)}</div></div>
-    <div class="card c-profit"><div class="label">سود خالص کل مؤسسه</div><div class="value profit">${afn(tot.net)}</div></div>
-  `;
+  // Greeting, hero figure, stat tiles, trend chart, attention list (js/charts.js)
+  if(typeof renderDashboardWidgets==='function') renderDashboardWidgets();
 
   const { pageItems: recentStudents, totalPages: rsPages } = paginateList('dash-recent-students', db.students);
   document.getElementById('dash-recent-students-empty').style.display = db.students.length? 'none':'block';
@@ -2887,17 +2880,14 @@ function renderBooks(){
     const income = db.students.filter(s=>inMonth(s.registerDate)).reduce((s,st)=>s + ((st.bookPaid?st.bookPrice||0:0) + (st.idCardPaid?st.idCardPrice||0:0)), 0);
     return { label: AFG_MONTHS[m-1], income, cost, profit: income-cost };
   });
-  const max = Math.max(1, ...trend.map(d=>Math.max(d.income, d.cost, Math.abs(d.profit))));
-  document.getElementById('books-trend-chart').innerHTML = trend.map(d=>`
-    <div class="trend-chart-bar-group">
-      <div class="trend-chart-bar-wrap">
-        <div class="trend-chart-bar" style="background:var(--income); height:${Math.max(4,(d.income/max)*105)}px;" title="درآمد: ${afn(d.income)}"></div>
-        <div class="trend-chart-bar" style="background:var(--cost); height:${Math.max(4,(d.cost/max)*105)}px;" title="هزینه: ${afn(d.cost)}"></div>
-        <div class="trend-chart-bar" style="background:var(--brand); height:${Math.max(4,(Math.abs(d.profit)/max)*105)}px;" title="سود: ${afn(d.profit)}"></div>
-      </div>
-      <div class="trend-chart-label">${esc(d.label)}</div>
-    </div>
-  `).join('');
+  renderTrendChart(document.getElementById('books-trend-chart'), {
+    labels: trend.map(d=>d.label),
+    series: [
+      { name:'درآمد (فروش کتاب و کارت)', color:'var(--series-1)', values: trend.map(d=>d.income), area:true },
+      { name:'هزینه (خرید از کتاب‌فروشی/مطبعه)', color:'var(--series-2)', values: trend.map(d=>d.cost) },
+      { name:'سود خالص', color:'var(--series-3)', values: trend.map(d=>d.profit) },
+    ],
+  });
 }
 
 /* ---------------- Shareholders ---------------- */
@@ -3308,17 +3298,14 @@ function monthlyTrendData(){
 }
 function renderMonthlyTrend(){
   const data = monthlyTrendData();
-  const max = Math.max(1, ...data.map(d=>Math.max(d.income, d.cost, Math.abs(d.profit))));
-  document.getElementById('trend-chart').innerHTML = data.map(d=>`
-    <div class="trend-chart-bar-group">
-      <div class="trend-chart-bar-wrap">
-        <div class="trend-chart-bar" style="background:var(--income); height:${Math.max(4,(d.income/max)*105)}px;" title="درآمد: ${afn(d.income)}"></div>
-        <div class="trend-chart-bar" style="background:var(--cost); height:${Math.max(4,(d.cost/max)*105)}px;" title="هزینه: ${afn(d.cost)}"></div>
-        <div class="trend-chart-bar" style="background:var(--brand); height:${Math.max(4,(Math.abs(d.profit)/max)*105)}px;" title="باقیمانده: ${afn(d.profit)}"></div>
-      </div>
-      <div class="trend-chart-label">${esc(d.label)}</div>
-    </div>
-  `).join('');
+  renderTrendChart(document.getElementById('trend-chart'), {
+    labels: data.map(d=>d.label),
+    series: [
+      { name:'سایر درآمدها', color:'var(--series-1)', values: data.map(d=>d.income), area:true },
+      { name:'هزینه‌ها', color:'var(--series-2)', values: data.map(d=>d.cost) },
+      { name:'باقیمانده', color:'var(--series-3)', values: data.map(d=>d.profit) },
+    ],
+  });
 }
 function renderReport(){
   const exps = db.expenses.filter(e=>inRange(e.date));

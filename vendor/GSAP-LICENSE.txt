@@ -1,0 +1,2 @@
+GSAP 3.15.0 (vendor/gsap.min.js) is used under the GreenSock Standard "no charge" license:
+https://gsap.com/standard-license
