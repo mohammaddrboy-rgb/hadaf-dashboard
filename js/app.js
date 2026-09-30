@@ -792,7 +792,7 @@ function studentsToRows(list){
   }));
 }
 function teachersToRows(list){
-  const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
+  const { y, m } = currentSalaryPeriod();
   return list.map(t=>{
     const classes = teacherClassesList(t.id);
     const pf = teacherPassFailStats(t.id);
@@ -1823,7 +1823,8 @@ function openTeacherProfileModal(teacherId){
 }
 
 /* ---------------- Teacher monthly salary logic ----------------
-   Each teacher has a pre-agreed rate (payAmount).
+   Each teacher has a pre-agreed rate (payAmount). Months are Afghan calendar
+   months (حمل، ثور، …), see dateInMonth().
    - "به ازای هر صنف (ماهانه)": rate × تعداد صنف‌هایی که مدرس در آن ماه داشته
      (هر صنف ۶ روز در هفته برگزار می‌شود و هر دوره در حدود یک ماه تمام می‌شود،
      پس هر صنف که در آن ماه آغاز شده یک واحد حساب می‌شود).
@@ -1831,10 +1832,26 @@ function openTeacherProfileModal(teacherId){
    - "درصد شهریه": درصدی از شهریهٔ جمع‌آوری‌شدهٔ صنف‌های مدرس در آن ماه.
    - PAY_HOURLY و PAY_FIXED_PCT: پایین‌تر توضیح داده شده‌اند.
    از این مبلغ ناخالص، مانده پیش‌پرداخت‌های تسویه‌نشدهٔ آن مدرس کسر می‌شود. */
+/* Salaries run by Afghan (Solar Hijri) calendar month: a salary period is
+   { y: Hijri year, m: 1–12 (1 = Hamal) }. */
 function dateInMonth(dateStr, y, m){
   if(!dateStr) return false;
-  const d = new Date(dateStr+'T00:00:00');
-  return d.getFullYear()===y && d.getMonth()===m;
+  const p = g2jParts(dateStr);
+  return p[0]===y && p[1]===m;
+}
+function currentSalaryPeriod(){ const p = g2jParts(todayISO()); return { y:p[0], m:p[1] }; }
+function salaryPeriodLabel(y, m){ return `${AFG_MONTHS[m-1]} ${faDigits(y)}`; }
+/* The month shown on the payroll panel (defaults to the current month). */
+let payrollPeriod = null;
+function getPayrollPeriod(){ return payrollPeriod || currentSalaryPeriod(); }
+function setPayrollPeriod(value){
+  const [y, m] = String(value).split('-').map(Number);
+  payrollPeriod = (y && m) ? { y, m } : null;
+  renderTeacherAdvances();
+}
+/* Salary expenses already recorded for a person and period. */
+function salaryPaymentsFor(teacherId, y, m){
+  return db.expenses.filter(e=>e.teacherId===teacherId && e.salaryPeriodJY===y && e.salaryPeriodJM===m);
 }
 function teacherClassCountInMonth(teacherId, y, m){
   return db.classes.filter(c=>c.teacherId===teacherId && dateInMonth(c.startDate, y, m)).length;
@@ -1943,20 +1960,23 @@ function toggleAdvanceSettled(id, checked){
 /* ---------------- Salary payout action ---------------- */
 function paySalary(teacherId){
   const t = db.teachers.find(x=>x.id===teacherId); if(!t) return;
-  const now = new Date();
-  const gross = teacherGrossSalary(t, now.getFullYear(), now.getMonth());
+  const { y, m } = getPayrollPeriod();
+  const period = salaryPeriodLabel(y, m);
+  const gross = teacherGrossSalary(t, y, m);
   const tax = teacherSalaryTax(gross);
   const advance = teacherAdvanceBalance(teacherId);
   const net = Math.max(0, gross - tax - advance);
-  if(net<=0 && gross<=0){ alert('برای این مدرس در ماه جاری صنفی ثبت نشده یا حقوق ثابتی تعریف نشده است.'); return; }
-  const bd = teacherSalaryBreakdown(t, now.getFullYear(), now.getMonth());
+  if(net<=0 && gross<=0){ alert(`برای این مدرس در ماه ${period} صنفی ثبت نشده یا حقوق ثابتی تعریف نشده است.`); return; }
+  const already = salaryPaymentsFor(teacherId, y, m);
+  if(already.length && !confirm(`برای «${t.name}» حقوق ماه ${period} قبلاً ثبت شده است (${afn(already.reduce((s,e)=>s+(Number(e.amount)||0),0))}). دوباره ثبت شود؟`)) return;
+  const bd = teacherSalaryBreakdown(t, y, m);
   const parts = [bd.fixed&&('ثابت '+afn(bd.fixed)), bd.perClass&&('صنف‌ها '+afn(bd.perClass)), bd.percent&&('درصد شهریه '+afn(bd.percent)), bd.overtime&&(`اضافه‌کاری ${faDigits(bd.overtimeHours)} ساعت `+afn(bd.overtime))].filter(Boolean);
-  if(!confirm(`حقوق خالص ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}${parts.length>1?' = '+parts.join(' + '):''}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
+  if(!confirm(`حقوق خالص ماه ${period}: ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}${parts.length>1?' = '+parts.join(' + '):''}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
   db.expenses.unshift({
     id: uid(), branch: BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
-    note: `حقوق ${t.name} · ${toJalali(todayISO())}`,
+    note: `حقوق ${t.name} · ${period}`,
     teacherId: teacherId, salaryGross: gross, salaryFixed: bd.fixed, salaryPercentShare: bd.percent, salaryOvertime: bd.overtime, salaryOvertimeHours: bd.overtimeHours, salaryTax: tax, salaryTaxPercent: teacherTaxPercent(), salaryAdvance: advance,
-    salaryPeriodY: now.getFullYear(), salaryPeriodM: now.getMonth(),
+    salaryPeriodJY: y, salaryPeriodJM: m,
   });
   db.teacherAdvances.forEach(a=>{ if(a.teacherId===teacherId && !a.settled) a.settled = true; });
   logAction('پرداخت حقوق', 'پرسنل', `${t.name} · خالص ${afn(net)}`);
@@ -2369,8 +2389,15 @@ function renderTeachers(){
 
 /* ---------------- Render: Payroll & Teacher Advances ---------------- */
 function renderTeacherAdvances(){
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
+  const { y, m } = getPayrollPeriod();
+  const bar = document.getElementById('payroll-period-bar');
+  if(bar){
+    // This month and the 11 before it.
+    const cur = currentSalaryPeriod(), opts = [];
+    for(let i=0;i<12;i++){ let yy=cur.y, mm=cur.m-i; while(mm<1){ mm+=12; yy--; } opts.push([yy,mm]); }
+    bar.innerHTML = `<label style="font-size:12.5px; color:var(--text-dim);">ماه حقوق:
+      <select onchange="setPayrollPeriod(this.value)" style="width:auto; margin-inline-start:6px;">${opts.map(([yy,mm])=>`<option value="${yy}-${mm}" ${yy===y&&mm===m?'selected':''}>${esc(salaryPeriodLabel(yy,mm))}${yy===cur.y&&mm===cur.m?' (ماه جاری)':''}</option>`).join('')}</select></label>`;
+  }
 
   document.getElementById('payroll-empty').style.display = db.teachers.length? 'none':'block';
   document.getElementById('payroll-table').innerHTML = db.teachers.map(t=>{
@@ -2386,7 +2413,7 @@ function renderTeacherAdvances(){
       <td>${esc(t.name)}</td><td>${esc(t.payType||'-')}</td><td class="num">${esc(cnt)}</td>
       <td class="num" title="${esc(parts.join(' + '))}">${afn(gross)}${parts.length>1?`<div style="font-size:10.5px; color:var(--text-faint);">${esc(parts.join(' + '))}</div>`:''}</td><td class="num">${esc(tax?afn(tax):'-')}</td><td class="num">${esc(advBal?afn(advBal):'-')}</td>
       <td class="num"><b style="color:var(--gold-soft);">${afn(net)}</b></td>
-      <td><button class="btn ghost small" onclick="paySalary('${escJs(t.id)}')">ثبت پرداخت</button></td>
+      <td>${salaryPaymentsFor(t.id, y, m).length ? '<span class="tag income" style="margin-inline-end:6px;">پرداخت‌شده</span>' : ''}<button class="btn ghost small" onclick="paySalary('${escJs(t.id)}')">ثبت پرداخت</button></td>
     </tr>`;
   }).join('');
 

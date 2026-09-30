@@ -20,8 +20,8 @@ function teacherSalaryPayments(teacherId){
 /* ---- Reusable income breakdown block for a teacher ---- */
 function teacherIncomeHtml(t){
   if(!t) return '';
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
+  const { y, m } = currentSalaryPeriod(); // Afghan calendar month
+  const monthName = salaryPeriodLabel(y, m);
   const classes = teacherClassesList(t.id);
   const isHourly = t.payType===PAY_HOURLY;
   const isFixedPct = t.payType===PAY_FIXED_PCT;
@@ -39,7 +39,7 @@ function teacherIncomeHtml(t){
   if(isHourly){
     // One row per day with recorded hours this month.
     const ot = teacherOvertimeInMonth(t, y, m);
-    tableHead = `<th>تاریخ</th><th class="num">ساعات کار</th><th class="num">ساعات اضافه</th><th class="num">مبلغ اضافه‌کاری</th>`;
+    tableHead = `<th>تاریخ (${esc(monthName)})</th><th class="num">ساعات کار</th><th class="num">ساعات اضافه</th><th class="num">مبلغ اضافه‌کاری</th>`;
     classRows = ot.days.length ? ot.days.map(d=>`<tr>
         <td>${toJalali(d.date)}</td><td class="num">${faDigits(d.worked)}</td><td class="num">${d.extra?faDigits(d.extra):'-'}</td>
         <td class="num">${d.amount?`<b style="color:var(--gold-soft, var(--income));">${afn(d.amount)}</b>`:'-'}</td>
@@ -67,9 +67,9 @@ function teacherIncomeHtml(t){
   const shareHeader = isPct ? 'سهم شما (٪ شهریه)' : 'درآمد شما از این صنف';
   if(!tableHead) tableHead = `<th>صنف</th><th>شعبه</th><th class="num">شهریهٔ جمع‌آوری‌شده</th><th class="num">${esc(shareHeader)}</th>`;
   const collectedNote = isHourly
-    ? `نوع پرداخت شما: <b>ثابت ماهانه + اضافه‌کاری ساعتی</b> — ${afn(t.payAmount)} در ماه برای ${faDigits(t.dailyHours||0)} ساعت کار در روز؛ هر ساعت بیشتر در یک روز ${afn(t.overtimeRate)}. این ماه: ${faDigits(bd.overtimeHours)} ساعت اضافه‌کاری = ${afn(bd.overtime)}.`
+    ? `نوع پرداخت شما: <b>ثابت ماهانه + اضافه‌کاری ساعتی</b> — ${afn(t.payAmount)} در ماه برای ${faDigits(t.dailyHours||0)} ساعت کار در روز؛ هر ساعت بیشتر در یک روز ${afn(t.overtimeRate)}. ماه ${esc(monthName)}: ${faDigits(bd.overtimeHours)} ساعت اضافه‌کاری = ${afn(bd.overtime)}.`
     : isFixedPct
-    ? `نوع پرداخت شما: <b>ثابت ماهانه + درصد شهریه</b> — ${afn(t.payAmount)} در ماه برای کارهای غیرتدریسی، به‌علاوهٔ ${faDigits(pct)}٪ از شهریهٔ جمع‌آوری‌شدهٔ هر صنف. این ماه: ثابت ${afn(bd.fixed)} + سهم شهریه ${afn(bd.percent)}.`
+    ? `نوع پرداخت شما: <b>ثابت ماهانه + درصد شهریه</b> — ${afn(t.payAmount)} در ماه برای کارهای غیرتدریسی، به‌علاوهٔ ${faDigits(pct)}٪ از شهریهٔ جمع‌آوری‌شدهٔ هر صنف. ماه ${esc(monthName)}: ثابت ${afn(bd.fixed)} + سهم شهریه ${afn(bd.percent)}.`
     : isPct
     ? `نوع پرداخت شما: <b>درصد شهریه</b> — ${faDigits(pct)}٪ از شهریهٔ جمع‌آوری‌شدهٔ هر صنف.`
     : isFixed
@@ -90,7 +90,7 @@ function teacherIncomeHtml(t){
     <tr>
       <td>${toJalali(p.date)}</td>
       <td class="num">${afn(p.amount)}</td>
-      <td>${esc((p.salaryPeriodM!=null) ? faDigits(p.salaryPeriodM+1)+'/'+faDigits(p.salaryPeriodY) : '-')}</td>
+      <td>${esc(p.salaryPeriodJM ? salaryPeriodLabel(p.salaryPeriodJY, p.salaryPeriodJM) : (p.salaryPeriodM!=null) ? faDigits(p.salaryPeriodM+1)+'/'+faDigits(p.salaryPeriodY) : '-')}</td>
       <td>${esc(p.note||'-')}</td>
     </tr>`).join('') : `<tr><td colspan="4" class="empty">هنوز حقوقی برای شما ثبت/پرداخت نشده است.</td></tr>`;
 
@@ -98,8 +98,8 @@ function teacherIncomeHtml(t){
     <div class="sectiontitle">درآمد و حقوق</div>
     <p class="hint" style="margin:-6px 0 12px;">${collectedNote}</p>
     <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:16px;">
-      <div class="card c-income"><div class="label">${isFixed?'حقوق ماهانهٔ ثابت':'درآمد تخمینی این ماه'}</div><div class="value income">${afn(monthGross)}</div></div>
-      <div class="card c-profit"><div class="label">${isHourly?'اضافه‌کاری این ماه':isFixedPct?'مجموع سهم شهریهٔ شما (تجمعی)':isPct?'مجموع درآمد شما (تجمعی)':'مجموع درآمد تخمینی'}</div><div class="value profit">${afn(isHourly?bd.overtime:lifetimeTotal)}</div></div>
+      <div class="card c-income"><div class="label">${isFixed?'حقوق ماهانهٔ ثابت':`درآمد تخمینی ماه ${esc(monthName)}`}</div><div class="value income">${afn(monthGross)}</div></div>
+      <div class="card c-profit"><div class="label">${isHourly?`اضافه‌کاری ماه ${esc(monthName)}`:isFixedPct?'مجموع سهم شهریهٔ شما (تجمعی)':isPct?'مجموع درآمد شما (تجمعی)':'مجموع درآمد تخمینی'}</div><div class="value profit">${afn(isHourly?bd.overtime:lifetimeTotal)}</div></div>
       <div class="card c-info"><div class="label">مجموع حقوق پرداخت‌شده به شما</div><div class="value info">${afn(totalPaid)}</div></div>
     </div>
     <div class="table-scroll"><table>
@@ -112,7 +112,7 @@ function teacherIncomeHtml(t){
     <div class="table-scroll"><table>
       <thead><tr><th>دوره</th><th class="num">حقوق ناخالص</th><th class="num">مالیات (${faDigits(taxPct)}٪)</th><th class="num">خالص پس از مالیات</th></tr></thead>
       <tbody>
-        <tr><td>${isFixed?'این ماه (ثابت)':'این ماه'}</td><td class="num">${afn(monthGross)}</td><td class="num">${afn(monthTax)}</td><td class="num"><b style="color:var(--income);">${afn(monthNet)}</b></td></tr>
+        <tr><td>${isFixed?'این ماه (ثابت)':`ماه ${esc(monthName)}`}</td><td class="num">${afn(monthGross)}</td><td class="num">${afn(monthTax)}</td><td class="num"><b style="color:var(--income);">${afn(monthNet)}</b></td></tr>
         ${isHourly ? '' : `<tr><td>${isFixedPct?'مجموع سهم شهریه (تجمعی)':'مجموع (تجمعی)'}</td><td class="num">${afn(lifetimeTotal)}</td><td class="num">${afn(lifeTax)}</td><td class="num"><b style="color:var(--income);">${afn(lifeNet)}</b></td></tr>`}
       </tbody>
     </table></div>
