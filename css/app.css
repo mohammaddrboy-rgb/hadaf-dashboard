@@ -316,7 +316,9 @@ a { color: var(--brand); }
 .app.collapsed .nav-group-title,
 .app.collapsed .navbtn .nav-label,
 .app.collapsed .sidebar-foot-card .who,
-.app.collapsed .sidebar-foot-card .btn { display: none; }
+.app.collapsed .sidebar-foot-card .btn .nav-label { display: none; }
+/* keep the logout button visible (icon only) when the sidebar is collapsed */
+.app.collapsed .sidebar-foot-card .btn { padding: 8px; justify-content: center; }
 .app.collapsed .navbtn { justify-content: center; padding: 10px 0; }
 .app.collapsed .brand { justify-content: center; padding-inline: 0; }
 .app.collapsed .sidebar-foot-card { justify-content: center; padding: 8px 0; }
@@ -1027,7 +1029,8 @@ html.has-motion .modal { animation: none; }
   .app, .app.collapsed { grid-template-columns: minmax(0, 1fr); }
   .collapse-btn { display: none; }
   .app.collapsed .brand-text, .app.collapsed .nav-group-title, .app.collapsed .navbtn .nav-label,
-  .app.collapsed .sidebar-foot-card .who, .app.collapsed .sidebar-foot-card .btn { display: revert; }
+  .app.collapsed .sidebar-foot-card .who, .app.collapsed .sidebar-foot-card .btn,
+  .app.collapsed .sidebar-foot-card .btn .nav-label { display: revert; }
   .mobile-menu-btn { display: inline-grid; }
   .sidebar {
     position: fixed; inset-block: 0; inset-inline-start: 0;
