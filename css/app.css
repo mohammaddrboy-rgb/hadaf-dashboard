@@ -1039,8 +1039,9 @@ html.has-motion .modal { animation: none; }
     transition: transform var(--dur-3) var(--ease-out);
     box-shadow: var(--elev-3);
     background: var(--panel);
+    z-index: 50; /* above the mobile-nav-backdrop (45) so the open menu is clickable */
   }
-  .sidebar.mobile-open { transform: none; }
+  .sidebar.mobile-open { transform: none !important; translate: none !important; opacity: 1 !important; }
   .mobile-nav-backdrop.active { display: block; }
   main { padding-bottom: 96px; }
   .theme-toggle-btn #theme-btn-label { display: none; }
