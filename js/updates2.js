@@ -108,6 +108,33 @@ function setTeacherDiscipline(date, teacherId, status){
   save();
   renderTeacherDiscipline();
 }
+/* Hours worked on a date, for staff paid a fixed salary + hourly overtime.
+   Stored next to the day's discipline marks: rec.hours[teacherId]. Empty clears it. */
+let savingTeacherHours = false;
+function setTeacherHours(date, teacherId, value){
+  if(currentRole!=='shareholder' && currentRole!=='manager') return;
+  // Re-rendering removes the focused input, which fires another change event; ignore it.
+  if(savingTeacherHours) return;
+  savingTeacherHours = true;
+  try { applyTeacherHours(date, teacherId, value); } finally { savingTeacherHours = false; }
+}
+function applyTeacherHours(date, teacherId, value){
+  const raw = String(value==null?'':value).trim();
+  const hours = raw==='' ? null : Number(raw.replace(/[۰-۹]/g, d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+  if(hours!==null && !(hours>=0 && hours<=24)){ alert('ساعات کار باید بین ۰ و ۲۴ باشد.'); renderTeacherDiscipline(); return; }
+  let rec = teacherDisciplineRecord(date);
+  if(!rec){ rec = { date, marks:{} }; db.teacherAttendance.push(rec); }
+  if(!rec.marks) rec.marks = {};
+  if(!rec.hours) rec.hours = {};
+  if(hours===null) delete rec.hours[teacherId];
+  else {
+    rec.hours[teacherId] = hours;
+    if(hours>0 && !rec.marks[teacherId]) rec.marks[teacherId] = 'present'; // working hours implies present
+  }
+  const t = db.teachers.find(x=>x.id===teacherId);
+  logAction('ثبت ساعات کار', 'پرسنل', `${t?t.name:''} · ${toJalali(date)} · ${hours===null?'حذف':faDigits(hours)+' ساعت'}`);
+  save(); // re-renders this page too
+}
 let teacherDisciplineDate = todayISO();
 function loadTeacherDisciplineDate(){ teacherDisciplineDate = jalaliPickerValue('tdisc-date'); renderTeacherDiscipline(); }
 function renderTeacherDiscipline(){
@@ -122,23 +149,34 @@ function renderTeacherDiscipline(){
     const cur = rec && rec.marks ? rec.marks[t.id] : undefined;
     const btn=(st,label)=>`<button class="btn ${cur===st?'':'ghost'} small" onclick="setTeacherDiscipline('${escJs(teacherDisciplineDate)}','${escJs(t.id)}','${escJs(st)}')">${esc(label)}</button>`;
     const tot = teacherDisciplineTotals(t.id);
+    let hoursCell = '<span style="color:var(--text-faint);">—</span>';
+    if(t.payType===PAY_HOURLY){
+      const h = rec && rec.hours ? rec.hours[t.id] : undefined;
+      const agreed = Number(t.dailyHours)||0;
+      const extra = h!==undefined ? Math.max(0, Number(h)-agreed) : 0;
+      hoursCell = `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <input type="number" min="0" max="24" step="0.5" style="width:74px;" value="${esc(h!==undefined?h:'')}" placeholder="${esc(agreed||'')}" onchange="setTeacherHours('${escJs(teacherDisciplineDate)}','${escJs(t.id)}',this.value)">
+        <small style="color:var(--text-dim);">توافق: ${faDigits(agreed)}${extra?` · <b style="color:var(--income);">+${faDigits(extra)} ساعت = ${afn(Math.round(extra*(Number(t.overtimeRate)||0)))}</b>`:''}</small>
+      </div>`;
+    }
     return `<tr>
       <td>${esc(t.name)} <small style="color:var(--text-dim);">(${esc(t.role||'مدرس')})</small></td>
       <td><div style="display:flex; gap:6px; flex-wrap:wrap;">${btn('present','حاضر')}${btn('tardy','ناوقت')}${btn('absent','غیرحاضر')}</div></td>
+      <td>${hoursCell}</td>
       <td class="num"><span style="color:var(--income);">${faDigits(tot.present)}</span> / <span style="color:var(--gold-soft,#c9a227);">${faDigits(tot.tardy)}</span> / <span style="color:var(--cost);">${faDigits(tot.absent)}</span></td>
     </tr>`;
   };
   root.innerHTML = `<div class="panel">
     <div class="panel-head"><h2>انضباط پرسنل (حاضر / ناوقت / غیرحاضر)</h2></div>
-    <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 12px;">برای هر تاریخ، وضعیت هر مدرس/پرسنل را با کلیک روی «حاضر»، «ناوقت» یا «غیرحاضر» ثبت کنید. ستون آخر مجموع کل را نشان می‌دهد.</p>
+    <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 12px;">برای هر تاریخ، وضعیت هر مدرس/پرسنل را با کلیک روی «حاضر»، «ناوقت» یا «غیرحاضر» ثبت کنید. برای پرسنلی که حقوق «ثابت ماهانه + اضافه‌کاری ساعتی» دارند، ساعات کار همان روز را هم وارد کنید؛ ساعات بیشتر از مقدار توافق‌شده، اضافه‌کاری حساب می‌شود. ستون آخر مجموع کل را نشان می‌دهد.</p>
     <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
       <div class="field" style="margin:0;"><label>تاریخ</label>${jalaliPicker('tdisc-date', teacherDisciplineDate)}</div>
       <button class="btn ghost" onclick="loadTeacherDisciplineDate()">نمایش این تاریخ</button>
       <span class="hint">تاریخ فعال: ${toJalali(teacherDisciplineDate)}</span>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>نام</th><th>وضعیت این تاریخ</th><th class="num">مجموع (حاضر/ناوقت/غیرحاضر)</th></tr></thead>
-      <tbody>${personnel.length ? personnel.map(rowFor).join('') : '<tr><td colspan="3" class="empty">پرسنلی ثبت نشده است.</td></tr>'}</tbody>
+      <thead><tr><th>نام</th><th>وضعیت این تاریخ</th><th>ساعات کار (اضافه‌کاری)</th><th class="num">مجموع (حاضر/ناوقت/غیرحاضر)</th></tr></thead>
+      <tbody>${personnel.length ? personnel.map(rowFor).join('') : '<tr><td colspan="4" class="empty">پرسنلی ثبت نشده است.</td></tr>'}</tbody>
     </table></div>
   </div>`;
 }
@@ -193,6 +231,7 @@ function renderStudentSelf(){
 
 /* ---------------- Login-page notifications (Dari changelog) ---------------- */
 const HADAF_CHANGELOG = [
+  { date:'۱۴۰۵/۰۷/۰۸', text:'دو نوع جدید حقوق: «ثابت ماهانه + اضافه‌کاری ساعتی» (ساعات کار روزانه در «انضباط پرسنل» ثبت می‌شود) و «ثابت ماهانه + درصد شهریهٔ صنف‌ها».' },
   { date:'۱۴۰۵/۰۷/۰۶', text:'صنف‌ها اکنون با «تاریخ آغاز» و «تعداد جلسات» تعریف می‌شوند (۶ روز در هفته، شنبه تا پنجشنبه) و همهٔ جلسات با تاریخ و روز هفته در حضور و غیاب دیده می‌شوند.' },
   { date:'۱۴۰۵/۰۷/۰۶', text:'چاپ رسید روی رول ۸۰ میلی‌متری اصلاح شد؛ رسید هر ثبت‌نام به‌صورت «عمودی» یا «افقی» قابل چاپ است (تنظیمات › تنظیمات چاپ رسید).' },
   { date:'۱۴۰۵/۰۶/۲۸', text:'شاگردان اکنون می‌توانند با کد شاگردی (نام کاربری) و شمارهٔ تماس (رمز عبور) وارد شوند و پروندهٔ خود را ببینند.' },
