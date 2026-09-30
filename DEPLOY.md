@@ -45,7 +45,10 @@ sudo cp -a /var/www/hadaf-data /var/www/hadaf-data.backup-$(date +%Y%m%d-%H%M)
 
 Pull `main` (or the branch) into the checkout the server is deployed
 from. Then copy or sync the static files into the web root the same way
-as previous deploys: `index.html`, `css/`, `js/`, `assets/`. The old
+as previous deploys: `index.html`, `css/`, `js/`, `assets/`, and — since
+the October 2026 redesign — the new `vendor/` (GSAP) and `fonts/`
+(Vazirmatn) folders. nginx serves `.woff2` as `font/woff2` with its
+default `mime.types`. The old
 `js/seed.js` contained real passwords; the new one does not, so make sure
 it is replaced.
 

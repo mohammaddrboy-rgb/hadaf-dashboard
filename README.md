@@ -7,7 +7,11 @@
 ```
 hadaf-dashboard/
 ├── index.html            # اسکلت HTML
-├── css/app.css           # استایل‌ها
+├── css/app.css           # سیستم طراحی (رنگ‌ها، اجزا، تم روشن/تاریک، موبایل)
+├── js/charts.js          # نمودار خطی مشترک و ویجت‌های صفحهٔ داشبورد
+├── js/ui.js              # انیمیشن‌ها (GSAP)، جست‌وجوی سریع Ctrl+K، منوی موبایل، صفحهٔ ورود
+├── vendor/gsap.min.js    # کتابخانهٔ انیمیشن GSAP (مجوز رایگان GreenSock)
+├── fonts/                # فونت وزیرمتن (SIL OFL) — بدون وابستگی به Google Fonts
 ├── js/seed.js            # دادهٔ نمونهٔ اولیه (بدون رمز عبور)
 ├── js/app.js             # منطق اصلی برنامه و ورود
 ├── js/discount-codes.js  # کدهای تخفیف مکاتب
