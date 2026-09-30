@@ -44,6 +44,12 @@ function teacherIncomeHtml(t){
         <td>${toJalali(d.date)}</td><td class="num">${faDigits(d.worked)}</td><td class="num">${d.extra?faDigits(d.extra):'-'}</td>
         <td class="num">${d.amount?`<b style="color:var(--gold-soft, var(--income));">${afn(d.amount)}</b>`:'-'}</td>
       </tr>`).join('') : `<tr><td colspan="4" class="empty">ساعات کار این ماه هنوز ثبت نشده است.</td></tr>`;
+    // Two-teacher classes inside the agreed hours: the other teacher's sessions are deducted.
+    classRows += teacherSharedClassDeduction(t, y, m).items.map(it=>{
+      const c = db.classes.find(x=>x.id===it.classId) || {};
+      return `<tr><td colspan="3">صنف دو مدرسه «${esc(c.name||c.category||'')}»: ${faDigits(it.sessions)} جلسهٔ مدرس دیگر × ${faDigits(Math.round(it.hours*100)/100)} ساعت</td>
+        <td class="num" style="color:var(--cost);">−${afn(it.amount)}</td></tr>`;
+    }).join('');
     lifetimeTotal = monthGross;
   } else if(isFixed){
     classRows = `<tr><td colspan="4" class="empty">حقوق شما ماهانهٔ ثابت است (${afn(t.payAmount)}) و به تفکیک هر صنف محاسبه نمی‌شود.</td></tr>`;
@@ -51,10 +57,11 @@ function teacherIncomeHtml(t){
   } else if(classes.length){
     classRows = classes.map(c=>{
       const collected = classFeesCollected(c.id);
-      const share = isPct ? Math.round(collected * pct / 100) : (Number(t.payAmount)||0);
+      const part = classPayShare(c, t.id); // ½ for a two-teacher class
+      const share = Math.round((isPct ? collected * pct / 100 : (Number(t.payAmount)||0)) * part);
       lifetimeTotal += share;
       return `<tr>
-        <td>${esc(c.name||c.category)}</td>
+        <td>${esc(c.name||c.category)}${isSharedClass(c)?`<div style="font-size:11px; color:var(--text-dim);">دو مدرسه (۵۰٪) · ${esc(classTeacherSkills(c,t.id)||'-')} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,t.id)])}</div>`:''}</td>
         <td>${esc(c.branch||'-')}</td>
         <td class="num">${afn(collected)}</td>
         <td class="num"><b style="color:var(--gold-soft, var(--income));">${afn(share)}</b></td>

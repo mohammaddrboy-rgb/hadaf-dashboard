@@ -792,7 +792,7 @@ function downloadWorkbookFromRows(rowsByCategory, filenamePrefix){
 }
 function classesToRows(list){
   return list.map(c=>({
-    'نام صنف': c.name||c.category, 'شعبه': c.branch||'', 'دسته': c.category, 'مدرس': teacherName(c.teacherId),
+    'نام صنف': c.name||c.category, 'شعبه': c.branch||'', 'دسته': c.category, 'مدرس': classTeachersLabel(c), 'دو مدرسه': isSharedClass(c) ? 'بله' : '',
     'شیوه': c.mode||'', 'ساعت': classTimeLabel(c), 'تاریخ آغاز': toJalali(c.startDate), 'تاریخ پایان': toJalali(classEndDate(c)), 'تعداد جلسات': classSessionDates(c).length,
     'ظرفیت': c.capacity||'', 'تعداد ثبت‌نامی': classEnrolledCount(c.id), 'وضعیت': classStatus(c),
     'پیشرفت (%)': c.progress||0, 'مکان': c.location||'', 'توضیحات': c.note||'',
@@ -1033,7 +1033,44 @@ function classTimeProgress(c){
   return Math.max(0, Math.min(100, Math.round((now - start) / (end - start) * 100)));
 }
 function teacherName(id){ const t = db.teachers.find(x=>x.id===id); return t?t.name:'-'; }
-function teacherClassesList(id){ return db.classes.filter(c=>c.teacherId===id); }
+/* ---------------- Two-teacher (shared) classes ----------------
+   A class can be taught by two teachers, each teaching some skills (e.g.
+   Reading & Writing / Listening & Speaking) on alternate days, three days a
+   week each: teacher 1 on Sat/Mon/Wed (teacher1Days 'sat') or Sun/Tue/Thu
+   ('sun'); teacher 2 on the other three. Fields: teacherId, teacherSkills,
+   teacher2Id, teacher2Skills, teacher1Days, and teacher1InHours /
+   teacher2InHours (for hourly-paid teachers: the class is inside their agreed
+   daily hours). Each teacher's pay counts such a class as half. */
+const SHARED_CLASS_DAYS = { sat:[6,1,3], sun:[0,2,4] }; // Date.getDay(): Sat=6, Sun=0 …
+const SHARED_DAY_LABELS = { sat:'شنبه، دوشنبه، چهارشنبه', sun:'یکشنبه، سه‌شنبه، پنجشنبه' };
+function isSharedClass(c){ return !!(c && c.teacherId && c.teacher2Id && c.teacher2Id!==c.teacherId); }
+function classTeacherIds(c){ return !c ? [] : isSharedClass(c) ? [c.teacherId, c.teacher2Id] : (c.teacherId ? [c.teacherId] : []); }
+function classHasTeacher(c, teacherId){ return !!teacherId && classTeacherIds(c).includes(teacherId); }
+/* Share of a class that counts towards a teacher's pay: 1, ½ when shared, 0 if not theirs. */
+function classPayShare(c, teacherId){ return classHasTeacher(c, teacherId) ? (isSharedClass(c) ? 0.5 : 1) : 0; }
+function classTeacherDaysKey(c, teacherId){
+  const first = c.teacher1Days==='sun' ? 'sun' : 'sat';
+  return teacherId===c.teacherId ? first : (first==='sat' ? 'sun' : 'sat');
+}
+/* Who teaches a shared class on a given date (the only teacher otherwise). */
+function classTeacherOnDate(c, iso){
+  if(!isSharedClass(c)) return c.teacherId||'';
+  const day = new Date(iso+'T00:00:00').getDay();
+  return SHARED_CLASS_DAYS[classTeacherDaysKey(c, c.teacherId)].includes(day) ? c.teacherId : c.teacher2Id;
+}
+function classTeacherSkills(c, teacherId){ return teacherId===c.teacherId ? (c.teacherSkills||'') : teacherId===c.teacher2Id ? (c.teacher2Skills||'') : ''; }
+function classTeachersLabel(c){
+  if(!isSharedClass(c)) return teacherName(c.teacherId);
+  return classTeacherIds(c).map(id=>{ const sk = classTeacherSkills(c, id); return teacherName(id) + (sk ? ` (${sk})` : ''); }).join(' + ');
+}
+/* Length of one session in hours, from the class start/end times (0 if unknown). */
+function classSessionHours(c){
+  if(!c.startTime || !c.endTime) return 0;
+  const [h1,m1] = c.startTime.split(':').map(Number), [h2,m2] = c.endTime.split(':').map(Number);
+  const mins = (h2*60+m2) - (h1*60+m1);
+  return mins>0 ? mins/60 : 0;
+}
+function teacherClassesList(id){ return db.classes.filter(c=>classHasTeacher(c, id)); }
 function className(id){ const c = db.classes.find(x=>x.id===id); return c?(c.name||c.category):'-'; }
 function classBranch(id){ const c = db.classes.find(x=>x.id===id); return c?(c.branch||'-'):'-'; }
 
@@ -1106,9 +1143,32 @@ function openClassModal(id){
     <div class="field"><label>نام صنف (اختیاری)</label><input id="f-cls-name" value="${esc(c?c.name||'':'')}" placeholder="مثلاً: جنرال انگلیسی - سطح مبتدی"></div>
     <div class="field"><label>مدرس</label>
       <div style="display:flex; gap:6px;">
-        <select id="f-cls-teacher" style="flex:1;">${teacherOptionsHtml(c?c.teacherId:'')}</select>
+        <select id="f-cls-teacher" style="flex:1;" onchange="updateSharedClassFields()">${teacherOptionsHtml(c?c.teacherId:'')}</select>
         <button type="button" class="btn ghost small" onclick="quickAddTeacher()">+ مدرس</button>
       </div>
+    </div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="f-cls-shared" style="width:auto;" ${isSharedClass(c)?'checked':''} onchange="updateSharedClassFields()">
+        این صنف دو مدرس دارد (هر مدرس ۳ روز در هفته، یک روز در میان)
+      </label>
+    </div>
+    <div id="f-cls-shared-box" style="display:none; padding:12px; border-radius:var(--radius-sm); background:var(--panel-2); margin-bottom:14px;">
+      <div class="field-row">
+        <div class="field"><label>مهارت‌های مدرس اول</label><input id="f-cls-skills1" value="${esc(c?c.teacherSkills||'':'')}" placeholder="مثلاً: Reading & Writing"></div>
+        <div class="field"><label>روزهای مدرس اول</label><select id="f-cls-days1" onchange="updateSharedClassFields()">
+          <option value="sat" ${!c||c.teacher1Days!=='sun'?'selected':''}>${esc(SHARED_DAY_LABELS.sat)}</option>
+          <option value="sun" ${c&&c.teacher1Days==='sun'?'selected':''}>${esc(SHARED_DAY_LABELS.sun)}</option>
+        </select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>مدرس دوم</label><select id="f-cls-teacher2" onchange="updateSharedClassFields()">${teacherOptionsHtml(c?c.teacher2Id||'':'')}</select></div>
+        <div class="field"><label>مهارت‌های مدرس دوم</label><input id="f-cls-skills2" value="${esc(c?c.teacher2Skills||'':'')}" placeholder="مثلاً: Listening & Speaking"></div>
+      </div>
+      <p class="hint" id="f-cls-days2-hint" style="margin:-4px 0 8px;"></p>
+      <div id="f-cls-inhours1-wrap" style="display:none;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;"><input type="checkbox" id="f-cls-inhours1" style="width:auto;" ${!c||c.teacher1InHours!==false?'checked':''}> <span id="f-cls-inhours1-label"></span></label></div>
+      <div id="f-cls-inhours2-wrap" style="display:none;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;"><input type="checkbox" id="f-cls-inhours2" style="width:auto;" ${!c||c.teacher2InHours!==false?'checked':''}> <span id="f-cls-inhours2-label"></span></label></div>
+      <p class="hint" style="margin:8px 0 0;">حقوق این صنف برای هر دو مدرس نصف حساب می‌شود (درصد شهریه، به ازای هر صنف، ساعتی، و بخش درصدیِ «ثابت + درصد»).</p>
     </div>
     <div class="field-row">
       <div class="field"><label>شیوهٔ برگزاری</label><select id="f-cls-mode">
@@ -1138,6 +1198,22 @@ function openClassModal(id){
   const wrap = document.getElementById('f-cls-start-wrap');
   if(wrap) wrap.addEventListener('change', updateClassSchedulePreview);
   updateClassSchedulePreview();
+  updateSharedClassFields();
+}
+/* Shows/labels the second-teacher fields of the class form. */
+function updateSharedClassFields(){
+  const box = document.getElementById('f-cls-shared-box'); if(!box) return;
+  const on = document.getElementById('f-cls-shared').checked;
+  box.style.display = on ? '' : 'none';
+  const days1 = document.getElementById('f-cls-days1').value;
+  const hint = document.getElementById('f-cls-days2-hint');
+  if(hint) hint.textContent = `روزهای مدرس دوم: ${days1==='sat' ? SHARED_DAY_LABELS.sun : SHARED_DAY_LABELS.sat}`;
+  [['1','f-cls-teacher'],['2','f-cls-teacher2']].forEach(([n,selId])=>{
+    const t = db.teachers.find(x=>x.id===document.getElementById(selId).value);
+    const hourly = on && t && t.payType===PAY_HOURLY;
+    document.getElementById('f-cls-inhours'+n+'-wrap').style.display = hourly ? '' : 'none';
+    if(hourly) document.getElementById('f-cls-inhours'+n+'-label').textContent = `این صنف در ساعات کاری توافق‌شدهٔ «${t.name}» (${faDigits(t.dailyHours||0)} ساعت در روز) است`;
+  });
 }
 function classFormSessionCount(){
   const n = Math.round(Number(document.getElementById('f-cls-sessions').value));
@@ -1175,13 +1251,29 @@ function quickAddTeacher(){
 function saveClass(id){
   const sessionCount = classFormSessionCount();
   if(!sessionCount){ alert('تعداد جلسات را وارد کنید.'); return; }
+  const shared = document.getElementById('f-cls-shared').checked;
+  const t1 = document.getElementById('f-cls-teacher').value, t2 = document.getElementById('f-cls-teacher2').value;
+  if(shared){
+    if(!t1 || !t2){ alert('برای صنف دو مدرسه، هر دو مدرس را انتخاب کنید.'); return; }
+    if(t1===t2){ alert('مدرس اول و دوم نمی‌توانند یک نفر باشند.'); return; }
+    const needsTime = [['1',t1],['2',t2]].some(([n,tid])=>{ const t=db.teachers.find(x=>x.id===tid); return t && t.payType===PAY_HOURLY && document.getElementById('f-cls-inhours'+n).checked; });
+    if(needsTime && !(document.getElementById('f-cls-start-time').value && document.getElementById('f-cls-end-time').value)){
+      alert('برای محاسبهٔ حقوق مدرس ساعتی، ساعت آغاز و پایان صنف را وارد کنید.'); return;
+    }
+  }
   const sessions = classSessionsFrom(jalaliPickerValue('f-cls-start'), sessionCount);
   const rec = {
     id: id || uid(),
     branch: document.getElementById('f-cls-branch').value,
     category: document.getElementById('f-cls-category').value,
     name: document.getElementById('f-cls-name').value.trim(),
-    teacherId: document.getElementById('f-cls-teacher').value,
+    teacherId: t1,
+    teacherSkills: shared ? document.getElementById('f-cls-skills1').value.trim() : '',
+    teacher2Id: shared ? t2 : '',
+    teacher2Skills: shared ? document.getElementById('f-cls-skills2').value.trim() : '',
+    teacher1Days: shared ? document.getElementById('f-cls-days1').value : '',
+    teacher1InHours: shared ? document.getElementById('f-cls-inhours1').checked : true,
+    teacher2InHours: shared ? document.getElementById('f-cls-inhours2').checked : true,
     mode: document.getElementById('f-cls-mode').value,
     capacity: Number(document.getElementById('f-cls-capacity').value)||0,
     startTime: document.getElementById('f-cls-start-time').value,
@@ -1763,7 +1855,7 @@ function saveTeacher(id){
   closeModal(); save();
 }
 function deleteTeacher(id){
-  if(db.classes.some(c=>c.teacherId===id)){
+  if(db.classes.some(c=>classHasTeacher(c, id))){
     if(!confirm('این مدرس به یک یا چند صنف اختصاص دارد. حذف مدرس، آن صنف‌ها را بدون مدرس باقی می‌گذارد. ادامه می‌دهید؟')) return;
   } else if(!confirm('این پرسنل حذف شود؟')) return;
   const it = db.teachers.find(x=>x.id===id);
@@ -1791,7 +1883,7 @@ function openTeacherProfileModal(teacherId){
     const fail = enrolled.filter(s=>s.result==='ناکام').length;
     const att = classAttendanceTotals(c.id);
     return `<tr>
-      <td>${esc(c.name||c.category)}</td><td>${esc(c.branch||'-')}</td><td>${toJalali(c.startDate)}</td>
+      <td>${esc(c.name||c.category)}${isSharedClass(c)?`<div style="font-size:11px; color:var(--text-dim);">دو مدرسه · ${esc(classTeacherSkills(c,t.id)||'-')} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,t.id)])}</div>`:''}</td><td>${esc(c.branch||'-')}</td><td>${toJalali(c.startDate)}</td>
       <td><span class="tag ${classStatusTagClass(classStatus(c))}">${esc(classStatus(c))}</span></td>
       <td class="num">${faDigits(enrolled.length)}</td>
       <td class="num">${faDigits(pass)}</td><td class="num">${faDigits(fail)}</td>
@@ -1880,8 +1972,9 @@ function setPayrollPeriod(value){
 function salaryPaymentsFor(teacherId, y, m){
   return db.expenses.filter(e=>e.teacherId===teacherId && e.salaryPeriodJY===y && e.salaryPeriodJM===m);
 }
+/* Classes a teacher started in a month; a two-teacher class counts as ½. */
 function teacherClassCountInMonth(teacherId, y, m){
-  return db.classes.filter(c=>c.teacherId===teacherId && dateInMonth(c.startDate, y, m)).length;
+  return db.classes.filter(c=>dateInMonth(c.startDate, y, m)).reduce((n,c)=> n + classPayShare(c, teacherId), 0);
 }
 /* Fees actually collected (paid) for a class — total, or within a given Gregorian month (by registerDate) */
 function classFeesCollected(classId){
@@ -1922,8 +2015,29 @@ function teacherHourlyRate(t){
   const h = Number(t.dailyHours)||0;
   return h>0 ? Math.round((Number(t.payAmount)||0) / h) : 0;
 }
+/* Fees collected in a month that count towards a teacher's percentage: half of a
+   two-teacher class's fees go to each of its teachers. */
 function teacherCollectedInMonth(teacherId, y, m){
-  return teacherClassesList(teacherId).reduce((s,c)=> s + classFeesCollectedInMonth(c.id, y, m), 0);
+  return teacherClassesList(teacherId).reduce((s,c)=> s + classFeesCollectedInMonth(c.id, y, m) * classPayShare(c, teacherId), 0);
+}
+/* Hourly teachers: the monthly salary pays for the agreed hours every working day
+   (26 a month, Sat–Thu). When a two-teacher class lies inside those hours, the
+   sessions the other teacher takes aren't theirs, so that time is deducted:
+   sessions × session hours × hourly rate / 26 — i.e. half of the class. */
+const WORKING_DAYS_PER_MONTH = 26;
+function teacherSharedClassDeduction(t, y, m){
+  const items = [];
+  if(t.payType!==PAY_HOURLY) return { amount:0, items };
+  const rate = teacherHourlyRate(t);
+  teacherClassesList(t.id).filter(isSharedClass).forEach(c=>{
+    const inHours = t.id===c.teacherId ? c.teacher1InHours!==false : c.teacher2InHours!==false;
+    if(!inHours) return; // outside agreed hours: paid through extra hours on the days they teach
+    const otherSessions = classSessionDates(c).filter(d=>dateInMonth(d, y, m) && classTeacherOnDate(c, d)!==t.id).length;
+    const hours = classSessionHours(c);
+    const amount = Math.round(otherSessions * hours * rate / WORKING_DAYS_PER_MONTH);
+    if(otherSessions) items.push({ classId:c.id, sessions:otherSessions, hours, amount });
+  });
+  return { amount: items.reduce((s,i)=>s+i.amount,0), items };
 }
 /* Overtime for PAY_HOURLY staff in a month: one entry per day with recorded hours. */
 function teacherOvertimeInMonth(t, y, m){
@@ -1941,16 +2055,31 @@ function teacherOvertimeInMonth(t, y, m){
 /* Parts of a month's gross salary, so pages can show where the total comes from. */
 function teacherSalaryBreakdown(t, y, m){
   const amt = Number(t.payAmount)||0;
-  const b = { fixed:0, perClass:0, percent:0, overtime:0, overtimeHours:0, total:0 };
+  const b = { fixed:0, perClass:0, percent:0, overtime:0, overtimeHours:0, sharedDeduction:0, total:0 };
   if(t.payType===PAY_FIXED) b.fixed = amt;
   else if(t.payType===PAY_PCT) b.percent = Math.round(teacherCollectedInMonth(t.id, y, m) * amt / 100);
-  else if(t.payType===PAY_HOURLY){ const o = teacherOvertimeInMonth(t, y, m); b.fixed = amt; b.overtime = o.amount; b.overtimeHours = o.hours; }
+  else if(t.payType===PAY_HOURLY){ const o = teacherOvertimeInMonth(t, y, m); b.fixed = amt; b.overtime = o.amount; b.overtimeHours = o.hours; b.sharedDeduction = teacherSharedClassDeduction(t, y, m).amount; }
   else if(t.payType===PAY_FIXED_PCT){ b.fixed = amt; b.percent = Math.round(teacherCollectedInMonth(t.id, y, m) * (Number(t.payPercent)||0) / 100); }
-  else b.perClass = amt * teacherClassCountInMonth(t.id, y, m);
-  b.total = b.fixed + b.perClass + b.percent + b.overtime;
+  else b.perClass = Math.round(amt * teacherClassCountInMonth(t.id, y, m));
+  b.total = Math.max(0, b.fixed + b.perClass + b.percent + b.overtime - b.sharedDeduction);
   return b;
 }
 function teacherGrossSalary(t, y, m){ return teacherSalaryBreakdown(t, y, m).total; }
+/* The pieces of a month's salary, e.g. «ثابت ۸,۰۰۰» and «درصد شهریه ۱,۰۰۰». */
+function salaryBreakdownParts(t, bd){
+  return [
+    bd.fixed && ((t.payType===PAY_HOURLY ? 'حقوق ساعات توافق‌شده ' : 'ثابت ') + afn(bd.fixed)),
+    bd.perClass && ('صنف‌ها ' + afn(bd.perClass)),
+    bd.percent && ('درصد شهریه ' + afn(bd.percent)),
+    bd.overtime && (`${faDigits(bd.overtimeHours)} ساعت اضافه ` + afn(bd.overtime)),
+  ].filter(Boolean);
+}
+/* Worth showing only when the salary has more than one piece or a deduction. */
+function salaryHasBreakdown(t, bd){ return salaryBreakdownParts(t, bd).length>1 || !!bd.sharedDeduction; }
+/* One line: pieces joined by «+», then the two-teacher class deduction with «−». */
+function salaryBreakdownText(t, bd){
+  return salaryBreakdownParts(t, bd).join(' + ') + (bd.sharedDeduction ? ' − صنف دو مدرسه ' + afn(bd.sharedDeduction) : '');
+}
 /* Short description of a person's pay agreement, e.g. for tables. */
 function teacherPayLabel(t){
   if(t.payType===PAY_HOURLY) return `${afn(t.payAmount)} در ماه برای ${faDigits(t.dailyHours||0)} ساعت در روز (هر ساعت ${afn(teacherHourlyRate(t))})`;
@@ -2021,12 +2150,12 @@ function paySalary(teacherId){
   const already = salaryPaymentsFor(teacherId, y, m);
   if(already.length && !confirm(`برای «${t.name}» حقوق ماه ${period} قبلاً ثبت شده است (${afn(already.reduce((s,e)=>s+(Number(e.amount)||0),0))}). دوباره ثبت شود؟`)) return;
   const bd = teacherSalaryBreakdown(t, y, m);
-  const parts = [bd.fixed&&((t.payType===PAY_HOURLY?'حقوق ساعات توافق‌شده ':'ثابت ')+afn(bd.fixed)), bd.perClass&&('صنف‌ها '+afn(bd.perClass)), bd.percent&&('درصد شهریه '+afn(bd.percent)), bd.overtime&&(`${faDigits(bd.overtimeHours)} ساعت اضافه `+afn(bd.overtime))].filter(Boolean);
-  if(!confirm(`حقوق خالص ماه ${period}: ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}${parts.length>1?' = '+parts.join(' + '):''}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
+  const partsText = salaryBreakdownText(t, bd);
+  if(!confirm(`حقوق خالص ماه ${period}: ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}${salaryHasBreakdown(t, bd)?' = '+partsText:''}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
   db.expenses.unshift({
     id: uid(), branch: BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
     note: `حقوق ${t.name} · ${period}`,
-    teacherId: teacherId, salaryGross: gross, salaryFixed: bd.fixed, salaryPercentShare: bd.percent, salaryOvertime: bd.overtime, salaryOvertimeHours: bd.overtimeHours, salaryTax: tax, salaryTaxPercent: teacherTaxPercent(), salaryAdvance: advance,
+    teacherId: teacherId, salaryGross: gross, salaryFixed: bd.fixed, salaryPercentShare: bd.percent, salaryOvertime: bd.overtime, salaryOvertimeHours: bd.overtimeHours, salarySharedDeduction: bd.sharedDeduction, salaryTax: tax, salaryTaxPercent: teacherTaxPercent(), salaryAdvance: advance,
     salaryPeriodJY: y, salaryPeriodJM: m,
   });
   db.teacherAdvances.forEach(a=>{ if(a.teacherId===teacherId && !a.settled) a.settled = true; });
@@ -2257,7 +2386,7 @@ function renderDashboard(){
   document.getElementById('dash-classes-empty').style.display = db.classes.length? 'none':'block';
   document.getElementById('dash-classes').innerHTML = classesPage.map(c=>{
     const st = classStatus(c);
-    return `<tr><td>${esc(c.name||c.category)}</td><td>${esc(teacherName(c.teacherId))}</td><td>${toJalali(c.startDate)}</td><td>${toJalali(classEndDate(c))}</td>
+    return `<tr><td>${esc(c.name||c.category)}</td><td>${esc(classTeachersLabel(c))}</td><td>${toJalali(c.startDate)}</td><td>${toJalali(classEndDate(c))}</td>
     <td class="num">${faDigits(classEnrolledCount(c.id))}${esc(c.capacity?'/'+faDigits(c.capacity):'')}</td>
     <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td></tr>`;
   }).join('');
@@ -2288,7 +2417,7 @@ document.getElementById('classes-filters').addEventListener('click', e=>{
 function renderClasses(){
   let source = db.classes;
   // Teachers see only their own classes (across all branches); others see all
-  if(currentRole==='teacher') source = source.filter(c=>c.teacherId===currentTeacherId);
+  if(currentRole==='teacher') source = source.filter(c=>classHasTeacher(c, currentTeacherId));
   const fullList = classBranchFilter==='all' ? source : source.filter(c=>c.branch===classBranchFilter);
   const { pageItems: list, totalPages } = paginateList('classes', fullList);
   document.getElementById('classes-empty').style.display = fullList.length? 'none':'block';
@@ -2296,7 +2425,7 @@ function renderClasses(){
     const st = classStatus(c);
     const enrolled = classEnrolledCount(c.id);
     return `<tr>
-      <td>${esc(c.name||'-')}</td><td>${esc(c.branch||'-')}</td><td>${esc(c.category)}</td><td>${esc(teacherName(c.teacherId))}</td><td>${esc(c.mode||'-')}</td>
+      <td>${esc(c.name||'-')}</td><td>${esc(c.branch||'-')}</td><td>${esc(c.category)}</td><td>${esc(classTeachersLabel(c))}${isSharedClass(c)?' <span class="tag info">دو مدرسه</span>':''}</td><td>${esc(c.mode||'-')}</td>
       <td style="white-space:nowrap;">${esc(classTimeLabel(c))}</td>
       <td>${toJalali(c.startDate)}</td><td>${toJalali(classEndDate(c))}</td>
       <td class="num">${esc(c.capacity?faDigits(c.capacity):'-')}</td>
@@ -2458,13 +2587,13 @@ function renderTeacherAdvances(){
     const cnt = t.payType===PAY_HOURLY ? `${faDigits(bd.overtimeHours)} ساعت اضافه`
       : t.payType===PAY_PER_CLASS ? `${faDigits(teacherClassCountInMonth(t.id, y, m))} صنف` : '-';
     const gross = bd.total;
-    const parts = [bd.fixed&&((t.payType===PAY_HOURLY?'حقوق ساعات توافق‌شده ':'ثابت ')+afn(bd.fixed)), bd.perClass&&('صنف‌ها '+afn(bd.perClass)), bd.percent&&('درصد شهریه '+afn(bd.percent)), bd.overtime&&(`${faDigits(bd.overtimeHours)} ساعت اضافه `+afn(bd.overtime))].filter(Boolean);
+    const partsText = salaryBreakdownText(t, bd);
     const tax = teacherSalaryTax(gross);
     const advBal = teacherAdvanceBalance(t.id);
     const net = teacherNetSalary(t, y, m);
     return `<tr>
       <td>${esc(t.name)}</td><td>${isLegacyPayType(t) ? `<span class="tag cost">${esc(payTypeLabel(t))}</span>` : esc(payTypeLabel(t))}</td><td class="num">${esc(cnt)}</td>
-      <td class="num" title="${esc(parts.join(' + '))}">${afn(gross)}${parts.length>1?`<div style="font-size:10.5px; color:var(--text-faint);">${esc(parts.join(' + '))}</div>`:''}</td><td class="num">${esc(tax?afn(tax):'-')}</td><td class="num">${esc(advBal?afn(advBal):'-')}</td>
+      <td class="num" title="${esc(partsText)}">${afn(gross)}${salaryHasBreakdown(t, bd)?`<div style="font-size:10.5px; color:var(--text-faint);">${esc(partsText)}</div>`:''}</td><td class="num">${esc(tax?afn(tax):'-')}</td><td class="num">${esc(advBal?afn(advBal):'-')}</td>
       <td class="num"><b style="color:var(--gold-soft);">${afn(net)}</b></td>
       <td>${salaryPaymentsFor(t.id, y, m).length ? '<span class="tag income" style="margin-inline-end:6px;">پرداخت‌شده</span>' : ''}<button class="btn ghost small" onclick="paySalary('${escJs(t.id)}')">ثبت پرداخت</button></td>
     </tr>`;
@@ -2983,7 +3112,7 @@ function renderAttendanceClassOptions(){
   const sel = document.getElementById('att-class-select'); if(!sel) return;
   const prevVal = sel.value;
   let classList = db.classes;
-  if(currentRole==='teacher') classList = classList.filter(c=>c.teacherId===currentTeacherId);
+  if(currentRole==='teacher') classList = classList.filter(c=>classHasTeacher(c, currentTeacherId));
   sel.innerHTML = '<option value="">انتخاب کنید</option>' + classList.map(c=>
     `<option value="${esc(c.id)}">${esc(c.name||c.category)} · ${esc(c.branch||'-')}</option>`
   ).join('');
@@ -3069,8 +3198,13 @@ function renderAttendanceGrid(){
   const { pageItems: enrolledPage, totalPages } = paginateList(attKey, enrolled);
   const isAct = attendanceMode==='activity';
 
+  const shared = isSharedClass(c);
+  const sharedLegend = shared ? `<div class="hint" style="margin:0 0 8px;">صنف دو مدرسه — <b>م۱</b>: ${esc(teacherName(c.teacherId))}${c.teacherSkills?` (${esc(c.teacherSkills)})`:''} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,c.teacherId)])} &nbsp;|&nbsp; <b>م۲</b>: ${esc(teacherName(c.teacher2Id))}${c.teacher2Skills?` (${esc(c.teacher2Skills)})`:''} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,c.teacher2Id)])}</div>` : '';
   const head = `<th style="position:sticky; right:0; background:var(--panel-2); min-width:150px;">شاگرد</th>` +
-    dates.map(d=>{ const p=g2jParts(d); return `<th style="min-width:46px; font-size:10px; line-height:1.35; white-space:nowrap;"><span style="color:var(--text-dim);">${esc(weekdayName(d))}</span><br>${faDigits(p[2])}<br>${esc(AFG_MONTHS[p[1]-1])}</th>`; }).join('') +
+    dates.map(d=>{ const p=g2jParts(d);
+      // Two-teacher class: mark which teacher (۱ / ۲) takes this day.
+      const who = shared ? (classTeacherOnDate(c, d)===c.teacherId ? '۱' : '۲') : '';
+      return `<th style="min-width:46px; font-size:10px; line-height:1.35; white-space:nowrap;${who==='۲'?' background:var(--brand-bg);':''}"><span style="color:var(--text-dim);">${esc(weekdayName(d))}</span><br>${faDigits(p[2])}<br>${esc(AFG_MONTHS[p[1]-1])}${who?`<br><b title="${esc(teacherName(classTeacherOnDate(c, d)))}">م${who}</b>`:''}</th>`; }).join('') +
     `<th style="min-width:70px;">${isAct?'مثبت/منفی':'حاضر/غایب'}</th>`;
   const rows = enrolledPage.map(s=>{
     const cells = dates.map(d=>{
@@ -3097,6 +3231,7 @@ function renderAttendanceGrid(){
     : 'روی هر خانه کلیک کنید تا بین «نامشخص»، «حاضر ✓» و «غایب ✕» تغییر کند؛ در پایان حتماً روی «ذخیره» بزنید.';
   wrap.innerHTML = `
     <p class="hint" style="margin:10px 0;">${hint}</p>
+    ${sharedLegend}
     <div class="table-scroll"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="pagination" id="att-grid-pagination"></div>
   `;
