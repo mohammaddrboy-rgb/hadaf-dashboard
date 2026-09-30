@@ -167,6 +167,10 @@ function migrateLegacyData(){
     if(s.schoolCode===undefined){ s.schoolCode=''; changed=true; }
     if(s.referredBy===undefined){ s.referredBy=''; changed=true; }
   });
+  db.classes.forEach(c=>{
+    // «inside agreed hours» option was removed: every two-teacher class counts as half.
+    if('teacher1InHours' in c || 'teacher2InHours' in c){ delete c.teacher1InHours; delete c.teacher2InHours; changed=true; }
+  });
   db.studentProfiles.forEach(p=>{
     if(p.familyId===undefined){ p.familyId=''; changed=true; }
     if(p.password===undefined || p.password===''){ p.password = studentLoginPassword(p); changed=true; }
@@ -1038,9 +1042,8 @@ function teacherName(id){ const t = db.teachers.find(x=>x.id===id); return t?t.n
    Reading & Writing / Listening & Speaking) on alternate days, three days a
    week each: teacher 1 on Sat/Mon/Wed (teacher1Days 'sat') or Sun/Tue/Thu
    ('sun'); teacher 2 on the other three. Fields: teacherId, teacherSkills,
-   teacher2Id, teacher2Skills, teacher1Days, and teacher1InHours /
-   teacher2InHours (for hourly-paid teachers: the class is inside their agreed
-   daily hours). Each teacher's pay counts such a class as half. */
+   teacher2Id, teacher2Skills, teacher1Days. Each teacher's pay counts such a
+   class as half, whatever their salary type. */
 const SHARED_CLASS_DAYS = { sat:[6,1,3], sun:[0,2,4] }; // Date.getDay(): Sat=6, Sun=0 …
 const SHARED_DAY_LABELS = { sat:'شنبه، دوشنبه، چهارشنبه', sun:'یکشنبه، سه‌شنبه، پنجشنبه' };
 function isSharedClass(c){ return !!(c && c.teacherId && c.teacher2Id && c.teacher2Id!==c.teacherId); }
@@ -1166,9 +1169,8 @@ function openClassModal(id){
         <div class="field"><label>مهارت‌های مدرس دوم</label><input id="f-cls-skills2" value="${esc(c?c.teacher2Skills||'':'')}" placeholder="مثلاً: Listening & Speaking"></div>
       </div>
       <p class="hint" id="f-cls-days2-hint" style="margin:-4px 0 8px;"></p>
-      <div id="f-cls-inhours1-wrap" style="display:none;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;"><input type="checkbox" id="f-cls-inhours1" style="width:auto;" ${!c||c.teacher1InHours!==false?'checked':''}> <span id="f-cls-inhours1-label"></span></label></div>
-      <div id="f-cls-inhours2-wrap" style="display:none;"><label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;"><input type="checkbox" id="f-cls-inhours2" style="width:auto;" ${!c||c.teacher2InHours!==false?'checked':''}> <span id="f-cls-inhours2-label"></span></label></div>
-      <p class="hint" style="margin:8px 0 0;">حقوق این صنف برای هر دو مدرس نصف حساب می‌شود (درصد شهریه، به ازای هر صنف، ساعتی، و بخش درصدیِ «ثابت + درصد»).</p>
+      <p class="hint" id="f-cls-hourly-note" style="display:none; margin:0;"></p>
+      <p class="hint" style="margin:8px 0 0;">حقوق این صنف برای هر دو مدرس نصف حساب می‌شود: درصد شهریه، مبلغ ثابتِ «به ازای هر صنف»، ساعات صنف برای مدرسان ساعتی، و بخش درصدیِ «ثابت + درصد» (بخش ثابت تغییر نمی‌کند).</p>
     </div>
     <div class="field-row">
       <div class="field"><label>شیوهٔ برگزاری</label><select id="f-cls-mode">
@@ -1208,12 +1210,12 @@ function updateSharedClassFields(){
   const days1 = document.getElementById('f-cls-days1').value;
   const hint = document.getElementById('f-cls-days2-hint');
   if(hint) hint.textContent = `روزهای مدرس دوم: ${days1==='sat' ? SHARED_DAY_LABELS.sun : SHARED_DAY_LABELS.sat}`;
-  [['1','f-cls-teacher'],['2','f-cls-teacher2']].forEach(([n,selId])=>{
-    const t = db.teachers.find(x=>x.id===document.getElementById(selId).value);
-    const hourly = on && t && t.payType===PAY_HOURLY;
-    document.getElementById('f-cls-inhours'+n+'-wrap').style.display = hourly ? '' : 'none';
-    if(hourly) document.getElementById('f-cls-inhours'+n+'-label').textContent = `این صنف در ساعات کاری توافق‌شدهٔ «${t.name}» (${faDigits(t.dailyHours||0)} ساعت در روز) است`;
-  });
+  const hourly = ['f-cls-teacher','f-cls-teacher2'].map(id=>db.teachers.find(x=>x.id===document.getElementById(id).value)).filter(t=>t && t.payType===PAY_HOURLY);
+  const note = document.getElementById('f-cls-hourly-note');
+  if(note){
+    note.style.display = on && hourly.length ? '' : 'none';
+    note.textContent = hourly.length ? `${hourly.map(t=>t.name).join(' و ')} حقوق ساعتی دارد؛ ساعت آغاز و پایان صنف لازم است تا نصف ساعات این صنف از حقوقش کم شود.` : '';
+  }
 }
 function classFormSessionCount(){
   const n = Math.round(Number(document.getElementById('f-cls-sessions').value));
@@ -1256,7 +1258,7 @@ function saveClass(id){
   if(shared){
     if(!t1 || !t2){ alert('برای صنف دو مدرسه، هر دو مدرس را انتخاب کنید.'); return; }
     if(t1===t2){ alert('مدرس اول و دوم نمی‌توانند یک نفر باشند.'); return; }
-    const needsTime = [['1',t1],['2',t2]].some(([n,tid])=>{ const t=db.teachers.find(x=>x.id===tid); return t && t.payType===PAY_HOURLY && document.getElementById('f-cls-inhours'+n).checked; });
+    const needsTime = [t1,t2].some(tid=>{ const t=db.teachers.find(x=>x.id===tid); return t && t.payType===PAY_HOURLY; });
     if(needsTime && !(document.getElementById('f-cls-start-time').value && document.getElementById('f-cls-end-time').value)){
       alert('برای محاسبهٔ حقوق مدرس ساعتی، ساعت آغاز و پایان صنف را وارد کنید.'); return;
     }
@@ -1272,8 +1274,6 @@ function saveClass(id){
     teacher2Id: shared ? t2 : '',
     teacher2Skills: shared ? document.getElementById('f-cls-skills2').value.trim() : '',
     teacher1Days: shared ? document.getElementById('f-cls-days1').value : '',
-    teacher1InHours: shared ? document.getElementById('f-cls-inhours1').checked : true,
-    teacher2InHours: shared ? document.getElementById('f-cls-inhours2').checked : true,
     mode: document.getElementById('f-cls-mode').value,
     capacity: Number(document.getElementById('f-cls-capacity').value)||0,
     startTime: document.getElementById('f-cls-start-time').value,
@@ -2021,17 +2021,16 @@ function teacherCollectedInMonth(teacherId, y, m){
   return teacherClassesList(teacherId).reduce((s,c)=> s + classFeesCollectedInMonth(c.id, y, m) * classPayShare(c, teacherId), 0);
 }
 /* Hourly teachers: the monthly salary pays for the agreed hours every working day
-   (26 a month, Sat–Thu). When a two-teacher class lies inside those hours, the
-   sessions the other teacher takes aren't theirs, so that time is deducted:
-   sessions × session hours × hourly rate / 26 — i.e. half of the class. */
+   (26 a month, Sat–Thu). In a two-teacher class the sessions the other teacher
+   takes aren't theirs, so that time is deducted — sessions × session hours ×
+   hourly rate / 26, i.e. half of the class. This applies to every two-teacher
+   class, inside or outside their agreed hours. */
 const WORKING_DAYS_PER_MONTH = 26;
 function teacherSharedClassDeduction(t, y, m){
   const items = [];
   if(t.payType!==PAY_HOURLY) return { amount:0, items };
   const rate = teacherHourlyRate(t);
   teacherClassesList(t.id).filter(isSharedClass).forEach(c=>{
-    const inHours = t.id===c.teacherId ? c.teacher1InHours!==false : c.teacher2InHours!==false;
-    if(!inHours) return; // outside agreed hours: paid through extra hours on the days they teach
     const otherSessions = classSessionDates(c).filter(d=>dateInMonth(d, y, m) && classTeacherOnDate(c, d)!==t.id).length;
     const hours = classSessionHours(c);
     const amount = Math.round(otherSessions * hours * rate / WORKING_DAYS_PER_MONTH);
