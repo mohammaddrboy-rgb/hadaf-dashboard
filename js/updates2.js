@@ -156,7 +156,7 @@ function renderTeacherDiscipline(){
       const extra = h!==undefined ? Math.max(0, Number(h)-agreed) : 0;
       hoursCell = `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
         <input type="number" min="0" max="24" step="0.5" style="width:74px;" value="${esc(h!==undefined?h:'')}" placeholder="${esc(agreed||'')}" onchange="setTeacherHours('${escJs(teacherDisciplineDate)}','${escJs(t.id)}',this.value)">
-        <small style="color:var(--text-dim);">توافق: ${faDigits(agreed)}${extra?` · <b style="color:var(--income);">+${faDigits(extra)} ساعت = ${afn(Math.round(extra*(Number(t.overtimeRate)||0)))}</b>`:''}</small>
+        <small style="color:var(--text-dim);">توافق: ${faDigits(agreed)}${extra?` · <b style="color:var(--income);">+${faDigits(extra)} ساعت = ${afn(Math.round(extra*teacherHourlyRate(t)))}</b>`:''}</small>
       </div>`;
     }
     return `<tr>
@@ -168,14 +168,14 @@ function renderTeacherDiscipline(){
   };
   root.innerHTML = `<div class="panel">
     <div class="panel-head"><h2>انضباط پرسنل (حاضر / ناوقت / غیرحاضر)</h2></div>
-    <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 12px;">برای هر تاریخ، وضعیت هر مدرس/پرسنل را با کلیک روی «حاضر»، «ناوقت» یا «غیرحاضر» ثبت کنید. برای پرسنلی که حقوق «ثابت ماهانه + اضافه‌کاری ساعتی» دارند، ساعات کار همان روز را هم وارد کنید؛ ساعات بیشتر از مقدار توافق‌شده، اضافه‌کاری حساب می‌شود. ستون آخر مجموع کل را نشان می‌دهد.</p>
+    <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 12px;">برای هر تاریخ، وضعیت هر مدرس/پرسنل را با کلیک روی «حاضر»، «ناوقت» یا «غیرحاضر» ثبت کنید. برای پرسنلی که حقوق «ساعتی» دارند، ساعات کار همان روز را هم وارد کنید؛ هر ساعت بیشتر از ساعات توافق‌شده با نرخ ساعتی خودشان به حقوق اضافه می‌شود. ستون آخر مجموع کل را نشان می‌دهد.</p>
     <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
       <div class="field" style="margin:0;"><label>تاریخ</label>${jalaliPicker('tdisc-date', teacherDisciplineDate)}</div>
       <button class="btn ghost" onclick="loadTeacherDisciplineDate()">نمایش این تاریخ</button>
       <span class="hint">تاریخ فعال: ${toJalali(teacherDisciplineDate)}</span>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>نام</th><th>وضعیت این تاریخ</th><th>ساعات کار (اضافه‌کاری)</th><th class="num">مجموع (حاضر/ناوقت/غیرحاضر)</th></tr></thead>
+      <thead><tr><th>نام</th><th>وضعیت این تاریخ</th><th>ساعات کار (پرسنل ساعتی)</th><th class="num">مجموع (حاضر/ناوقت/غیرحاضر)</th></tr></thead>
       <tbody>${personnel.length ? personnel.map(rowFor).join('') : '<tr><td colspan="4" class="empty">پرسنلی ثبت نشده است.</td></tr>'}</tbody>
     </table></div>
   </div>`;
@@ -231,9 +231,9 @@ function renderStudentSelf(){
 
 /* ---------------- Login-page notifications (Dari changelog) ---------------- */
 const HADAF_CHANGELOG = [
+  { date:'۱۴۰۵/۰۷/۰۹', text:'انواع حقوق پرسنل به چهار نوع رسید: ۱) درصد شهریه، ۲) ثابت ماهانه، ۳) ساعتی (نرخ هر ساعت = حقوق ماهانه ÷ ساعات توافق‌شدهٔ روزانه)، ۴) ثابت ماهانه + درصد شهریه. پرسنلی که هنوز «به ازای هر صنف» هستند با برچسب قرمز مشخص شده‌اند.' },
   { date:'۱۴۰۵/۰۷/۰۸', text:'نمودارهای ماهانه و بازه‌های گزارش (گزارش جامع، هزینه‌ها، گزارش مالیاتی و خروجی اکسل) اکنون بر اساس ماه، فصل و سال هجری شمسی است؛ گزینهٔ «ماه گذشته» هم اضافه شد.' },
   { date:'۱۴۰۵/۰۷/۰۸', text:'حقوق پرسنل اکنون بر اساس ماه‌های هجری شمسی (حمل، ثور، …) محاسبه می‌شود؛ در «محاسبهٔ حقوق» می‌توانید ماه را انتخاب کنید (مثلاً میزان را در اوایل عقرب).' },
-  { date:'۱۴۰۵/۰۷/۰۸', text:'دو نوع جدید حقوق: «ثابت ماهانه + اضافه‌کاری ساعتی» (ساعات کار روزانه در «انضباط پرسنل» ثبت می‌شود) و «ثابت ماهانه + درصد شهریهٔ صنف‌ها».' },
   { date:'۱۴۰۵/۰۷/۰۶', text:'صنف‌ها اکنون با «تاریخ آغاز» و «تعداد جلسات» تعریف می‌شوند (۶ روز در هفته، شنبه تا پنجشنبه) و همهٔ جلسات با تاریخ و روز هفته در حضور و غیاب دیده می‌شوند.' },
   { date:'۱۴۰۵/۰۷/۰۶', text:'چاپ رسید روی رول ۸۰ میلی‌متری اصلاح شد؛ رسید هر ثبت‌نام به‌صورت «عمودی» یا «افقی» قابل چاپ است (تنظیمات › تنظیمات چاپ رسید).' },
   { date:'۱۴۰۵/۰۶/۲۸', text:'شاگردان اکنون می‌توانند با کد شاگردی (نام کاربری) و شمارهٔ تماس (رمز عبور) وارد شوند و پروندهٔ خود را ببینند.' },

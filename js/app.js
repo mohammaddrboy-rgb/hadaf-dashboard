@@ -137,6 +137,10 @@ function migrateLegacyData(){
     if(t.contractStart===undefined){ t.contractStart = t.createdAt||''; changed=true; }
     if(t.contractEnd===undefined){ t.contractEnd=''; changed=true; }
     if(t.canRequestAdvance===undefined){ t.canRequestAdvance=false; changed=true; }
+    // Hourly pay was first stored as «ثابت ماهانه + اضافه‌کاری ساعتی» with its own
+    // overtime rate; the rate is now always monthly salary / agreed daily hours.
+    if(t.payType==='ثابت ماهانه + اضافه‌کاری ساعتی'){ t.payType='ساعتی'; changed=true; }
+    if(t.overtimeRate!==undefined){ delete t.overtimeRate; changed=true; }
     if(!t.password){ t.password = generateUniquePassword(); changed=true; migrationGeneratedPasswords.push({name:t.name, code:t.code, role:t.role, password:t.password}); }
   });
   db.students.forEach(s=>{
@@ -816,12 +820,12 @@ function teachersToRows(list){
     const pf = teacherPassFailStats(t.id);
     return { 'کد': t.code||'', 'نام': t.name, 'نقش': t.role||'', 'شماره تماس': t.phone||'', 'مضامین': t.subjects||'',
       'آغاز قرارداد': t.contractStart?toJalali(t.contractStart):'', 'پایان قرارداد': t.contractEnd?toJalali(t.contractEnd):'نامشخص',
-      'نوع پرداخت': t.payType||'', 'مبلغ (افغانی)': t.payAmount||0,
-      'ساعات توافق‌شده در روز': t.payType===PAY_HOURLY ? (t.dailyHours||0) : '', 'نرخ اضافه‌کاری (افغانی/ساعت)': t.payType===PAY_HOURLY ? (t.overtimeRate||0) : '',
+      'نوع پرداخت': payTypeLabel(t), 'مبلغ (افغانی)': t.payAmount||0,
+      'ساعات توافق‌شده در روز': t.payType===PAY_HOURLY ? (t.dailyHours||0) : '', 'نرخ هر ساعت (افغانی)': t.payType===PAY_HOURLY ? teacherHourlyRate(t) : '',
       'درصد شهریه': t.payType===PAY_FIXED_PCT ? (t.payPercent||0) : '',
-      'ساعات اضافه‌کاری این ماه': t.payType===PAY_HOURLY ? teacherOvertimeInMonth(t,y,m).hours : '',
+      'ساعات اضافهٔ این ماه': t.payType===PAY_HOURLY ? teacherOvertimeInMonth(t,y,m).hours : '',
       'تعداد صنف‌ها': classes.length, 'صنف‌های تدریسی': classes.map(c=>c.name||c.category).join('، ')||'-',
-      'صنف‌های این ماه': (t.payType==='ماهانه ثابت'||t.payType===PAY_HOURLY) ? '' : teacherClassCountInMonth(t.id,y,m),
+      'صنف‌های این ماه': t.payType===PAY_PER_CLASS ? teacherClassCountInMonth(t.id,y,m) : '',
       'حقوق ناخالص این ماه (افغانی)': teacherGrossSalary(t,y,m), 'مانده پیش‌پرداخت (افغانی)': teacherAdvanceBalance(t.id),
       'خالص قابل پرداخت این ماه (افغانی)': teacherNetSalary(t,y,m),
       'نرخ کامیابی (٪)': pf.rate===null?'': pf.rate, 'توضیحات': t.note||'' };
@@ -1659,18 +1663,16 @@ function openTeacherModal(id){
 
     <div class="sectiontitle">حقوق و دستمزد</div>
     <div class="field-row">
-      <div class="field"><label>نوع پرداخت</label><select id="f-t-paytype" onchange="updateTeacherPayField()">
-        <option value="به ازای هر صنف (ماهانه)" ${!t||t.payType==='به ازای هر صنف (ماهانه)'?'selected':''}>به ازای هر صنف (ماهانه)</option>
-        <option value="ماهانه ثابت" ${t&&t.payType==='ماهانه ثابت'?'selected':''}>ماهانه ثابت</option>
-        <option value="درصد شهریه" ${t&&t.payType==='درصد شهریه'?'selected':''}>درصد شهریهٔ جمع‌آوری‌شده</option>
-        <option value="${esc(PAY_HOURLY)}" ${t&&t.payType===PAY_HOURLY?'selected':''}>ثابت ماهانه با ساعات معین + اضافه‌کاری ساعتی</option>
-        <option value="${esc(PAY_FIXED_PCT)}" ${t&&t.payType===PAY_FIXED_PCT?'selected':''}>ثابت ماهانه + درصد شهریهٔ صنف‌ها</option>
+      <div class="field"><label>نوع پرداخت *</label><select id="f-t-paytype" onchange="updateTeacherPayField()">
+        <option value="" ${!t||!t.payType?'selected':''} disabled>نوع پرداخت را انتخاب کنید</option>
+        ${PAY_TYPES.map(v=>`<option value="${esc(v)}" ${t&&t.payType===v?'selected':''}>${esc(PAY_TYPE_LABELS[v])}</option>`).join('')}
+        ${t && t.payType===PAY_PER_CLASS ? `<option value="${esc(PAY_PER_CLASS)}" selected>${esc(PAY_TYPE_LABELS[PAY_PER_CLASS])}</option>` : ''}
       </select></div>
-      <div class="field"><label id="f-t-payamount-label">مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${esc(t&&t.payAmount?numFmt(t.payAmount):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+      <div class="field"><label id="f-t-payamount-label">مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${esc(t&&t.payAmount?numFmt(t.payAmount):'')}" oninput="formatMoneyInput(this); updateTeacherPayField()" placeholder="۰"></div>
     </div>
     <div class="field-row" id="f-t-hourly-fields" style="display:none;">
-      <div class="field"><label>ساعات کار توافق‌شده در روز</label><input id="f-t-dailyhours" type="number" min="0.5" step="0.5" value="${esc(t&&t.dailyHours?t.dailyHours:'')}" placeholder="مثلاً: ۴"></div>
-      <div class="field"><label>مبلغ هر ساعت اضافه‌کاری (افغانی)</label><input id="f-t-overtime" class="money-input" value="${esc(t&&t.overtimeRate?numFmt(t.overtimeRate):'')}" oninput="formatMoneyInput(this)" placeholder="مثلاً: ۳۰۰۰"></div>
+      <div class="field"><label>ساعات کار توافق‌شده در روز *</label><input id="f-t-dailyhours" type="number" min="0.5" step="0.5" value="${esc(t&&t.dailyHours?t.dailyHours:'')}" placeholder="مثلاً: ۴" oninput="updateTeacherPayField()"></div>
+      <div class="field"><label>نرخ هر ساعت (محاسبهٔ خودکار)</label><div id="f-t-hourly-rate" style="padding:9px 0; font-weight:700;">-</div></div>
     </div>
     <div class="field-row" id="f-t-pct-fields" style="display:none;">
       <div class="field"><label>درصد از شهریهٔ صنف‌ها (٪)</label><input id="f-t-paypercent" type="number" min="0" max="100" step="0.5" value="${esc(t&&t.payPercent?t.payPercent:'')}" placeholder="مثلاً: ۲۰"></div>
@@ -1693,30 +1695,38 @@ function updateTeacherPayField(){
   const hourlyBox = document.getElementById('f-t-hourly-fields'), pctBox = document.getElementById('f-t-pct-fields');
   if(hourlyBox) hourlyBox.style.display = sel.value===PAY_HOURLY ? '' : 'none';
   if(pctBox) pctBox.style.display = sel.value===PAY_FIXED_PCT ? '' : 'none';
+  input.parentElement.style.display = '';
   if(sel.value===PAY_HOURLY){
-    label.textContent = 'حقوق ثابت ماهانه (افغانی)';
+    label.textContent = 'حقوق ماهانه برای ساعات توافق‌شده (افغانی)';
     input.placeholder = 'مثلاً: ۱۲۰۰۰';
-    hint.textContent = 'حقوق ثابت ماهانه برای کار روزانه به تعداد ساعات توافق‌شده. هر روزی که بیشتر کار کند، برای هر ساعت اضافه مبلغ اضافه‌کاری پرداخت می‌شود. ساعات کار هر روز در بخش «انضباط پرسنل» ثبت می‌شود. مثال: ۱۲۰۰۰ افغانی برای ۴ ساعت در روز؛ اگر یک روز ۵ ساعت کار کند، برای آن یک ساعت اضافه ۳۰۰۰ افغانی دریافت می‌کند.';
+    const rateEl = document.getElementById('f-t-hourly-rate');
+    const hrs = Number(document.getElementById('f-t-dailyhours').value)||0;
+    if(rateEl) rateEl.textContent = hrs>0 && moneyNum('f-t-payamount')>0 ? afn(Math.round(moneyNum('f-t-payamount')/hrs)) : '-';
+    hint.textContent = 'مثال: ۱۲۰۰۰ افغانی در ماه برای ۴ ساعت کار در روز، یعنی هر ساعت ۳۰۰۰ افغانی. این مبلغ در پایان هر ماه پرداخت می‌شود. اگر در روزی بیشتر از ساعات توافق‌شده کار کند، برای هر ساعت اضافه همین نرخ ساعتی به حقوقش اضافه می‌شود. ساعات کار هر روز در بخش «انضباط پرسنل» ثبت می‌شود.';
   } else if(sel.value===PAY_FIXED_PCT){
     label.textContent = 'حقوق ثابت ماهانه (افغانی)';
     input.placeholder = '۰';
     hint.textContent = 'حقوق ثابت ماهانه برای کارهای غیرتدریسی (مانند آماده‌سازی مواد درسی) به‌علاوهٔ درصدی از شهریه‌های جمع‌آوری‌شدهٔ صنف‌هایی که تدریس می‌کند (در همان ماه).';
-  } else if(sel.value==='درصد شهریه'){
+  } else if(sel.value===PAY_PCT){
     label.textContent = 'درصد (٪)';
     input.placeholder = 'مثلاً: ۲۰';
     hint.textContent = 'در این حالت، حقوق هر ماه برابر است با این درصد از مجموع شهریه‌های جمع‌آوری‌شدهٔ (پرداخت‌شدهٔ) صنف‌های این مدرس در همان ماه. مثلاً ۲۰ یعنی ۲۰٪ از شهریهٔ دریافتی صنف‌های او.';
-  } else if(sel.value==='ماهانه ثابت'){
+  } else if(sel.value===PAY_FIXED){
     label.textContent = 'مبلغ (افغانی)';
     input.placeholder = '۰';
     hint.textContent = 'مبلغ ثابت ماهانه، مستقل از تعداد صنف‌ها.';
-  } else {
-    label.textContent = 'مبلغ (افغانی)';
+  } else if(sel.value===PAY_PER_CLASS){
+    label.textContent = 'مبلغ برای هر صنف (افغانی)';
     input.placeholder = '۰';
-    hint.textContent = 'در حالت «به ازای هر صنف»، این مبلغ به ازای هر صنفی که مدرس در یک ماه داشته باشد پرداخت می‌شود (هر صنف ۶ روز در هفته، شنبه تا پنج‌شنبه، هر جلسه ۶۰ دقیقه، و هر دوره در حدود یک ماه به پایان می‌رسد).';
+    hint.textContent = 'این نوع پرداخت دیگر استفاده نمی‌شود. لطفاً یکی از چهار نوع پرداخت را انتخاب کنید؛ تا آن زمان حقوق به همان روش قبلی (مبلغ × تعداد صنف‌های ماه) محاسبه می‌شود.';
+  } else {
+    input.parentElement.style.display = 'none';
+    hint.textContent = 'نوع پرداخت را انتخاب کنید.';
   }
 }
 function saveTeacher(id){
   const payType = document.getElementById('f-t-paytype').value;
+  if(!payType){ alert('نوع پرداخت را انتخاب کنید.'); return; }
   if(payType===PAY_HOURLY && !(Number(document.getElementById('f-t-dailyhours').value)>0)){
     alert('ساعات کار توافق‌شده در روز را وارد کنید.'); return;
   }
@@ -1739,9 +1749,8 @@ function saveTeacher(id){
     contractEnd: hasEnd ? jalaliPickerValue('f-t-cend') : '',
     payType: document.getElementById('f-t-paytype').value,
     payAmount: moneyNum('f-t-payamount'),
-    dailyHours: Number(document.getElementById('f-t-dailyhours').value)||0,
-    overtimeRate: moneyNum('f-t-overtime'),
-    payPercent: Number(document.getElementById('f-t-paypercent').value)||0,
+    dailyHours: payType===PAY_HOURLY ? (Number(document.getElementById('f-t-dailyhours').value)||0) : 0,
+    payPercent: payType===PAY_FIXED_PCT ? (Number(document.getElementById('f-t-paypercent').value)||0) : 0,
     photo: existing ? (existing.photo||'') : '',
     idPhoto: existing ? (existing.idPhoto||'') : '',
     password: existing ? (existing.password || generateUniquePassword()) : generateUniquePassword(),
@@ -1881,22 +1890,44 @@ function classFeesCollected(classId){
 function classFeesCollectedInMonth(classId, y, m){
   return db.students.filter(s=>s.classId===classId && dateInMonth(s.registerDate, y, m)).reduce((sum,s)=>sum+(Number(s.paidAmount)||0),0);
 }
-/* Two combined pay types:
-   - PAY_HOURLY: fixed monthly salary (payAmount) for `dailyHours` hours of work a
-     day; every hour worked beyond that on a given day is paid `overtimeRate`.
-     Hours worked per day are recorded on the personnel discipline page
-     (teacherAttendance[].hours[teacherId]). Days with fewer hours are not deducted.
-   - PAY_FIXED_PCT: fixed monthly salary (payAmount, for non-teaching work) plus
-     `payPercent`% of the fees collected that month for the classes they teach. */
-const PAY_HOURLY = 'ثابت ماهانه + اضافه‌کاری ساعتی';
+/* HADAF's four salary types (stored in teacher.payType):
+   1. PAY_PCT        payAmount% of the fees collected that month for their classes.
+   2. PAY_FIXED      a fixed monthly salary (payAmount), whatever the classes.
+   3. PAY_HOURLY     hourly: payAmount a month for `dailyHours` hours a day, so the
+                     hourly rate is payAmount / dailyHours (12,000 for 4 h = 3,000 an
+                     hour). Hours beyond dailyHours on a day are paid at that rate;
+                     hours are entered on the personnel discipline page
+                     (teacherAttendance[].hours[teacherId]). Short days are not deducted.
+   4. PAY_FIXED_PCT  a fixed monthly salary (payAmount, non-teaching work) plus
+                     payPercent% of the fees collected that month for their classes.
+   PAY_PER_CLASS (payAmount × classes started that month) is no longer offered;
+   people still on it keep being paid that way until their type is changed. */
+const PAY_PCT = 'درصد شهریه';
+const PAY_FIXED = 'ماهانه ثابت';
+const PAY_HOURLY = 'ساعتی';
 const PAY_FIXED_PCT = 'ثابت ماهانه + درصد شهریه';
-const PAY_TYPES = ['به ازای هر صنف (ماهانه)', 'ماهانه ثابت', 'درصد شهریه', PAY_HOURLY, PAY_FIXED_PCT];
+const PAY_PER_CLASS = 'به ازای هر صنف (ماهانه)';
+const PAY_TYPES = [PAY_PCT, PAY_FIXED, PAY_HOURLY, PAY_FIXED_PCT];
+const PAY_TYPE_LABELS = {
+  [PAY_PCT]: '۱. درصد از شهریهٔ جمع‌آوری‌شدهٔ صنف‌ها',
+  [PAY_FIXED]: '۲. حقوق ثابت ماهانه',
+  [PAY_HOURLY]: '۳. ساعتی (بر اساس ساعات کار روزانه)',
+  [PAY_FIXED_PCT]: '۴. حقوق ثابت ماهانه + درصد شهریهٔ صنف‌ها',
+  [PAY_PER_CLASS]: 'به ازای هر صنف (قدیمی — لطفاً نوع پرداخت را تغییر دهید)',
+};
+function payTypeLabel(t){ return t && t.payType ? (PAY_TYPE_LABELS[t.payType] || t.payType) : 'تعیین نشده'; }
+function isLegacyPayType(t){ return !t.payType || !PAY_TYPES.includes(t.payType); }
+/* Hourly rate for PAY_HOURLY: the monthly amount spread over the agreed daily hours. */
+function teacherHourlyRate(t){
+  const h = Number(t.dailyHours)||0;
+  return h>0 ? Math.round((Number(t.payAmount)||0) / h) : 0;
+}
 function teacherCollectedInMonth(teacherId, y, m){
   return teacherClassesList(teacherId).reduce((s,c)=> s + classFeesCollectedInMonth(c.id, y, m), 0);
 }
 /* Overtime for PAY_HOURLY staff in a month: one entry per day with recorded hours. */
 function teacherOvertimeInMonth(t, y, m){
-  const agreed = Number(t.dailyHours)||0, rate = Number(t.overtimeRate)||0;
+  const agreed = Number(t.dailyHours)||0, rate = teacherHourlyRate(t);
   const days = [];
   (db.teacherAttendance||[]).forEach(r=>{
     if(!r.hours || r.hours[t.id]===undefined || !dateInMonth(r.date, y, m)) return;
@@ -1911,8 +1942,8 @@ function teacherOvertimeInMonth(t, y, m){
 function teacherSalaryBreakdown(t, y, m){
   const amt = Number(t.payAmount)||0;
   const b = { fixed:0, perClass:0, percent:0, overtime:0, overtimeHours:0, total:0 };
-  if(t.payType==='ماهانه ثابت') b.fixed = amt;
-  else if(t.payType==='درصد شهریه') b.percent = Math.round(teacherCollectedInMonth(t.id, y, m) * amt / 100);
+  if(t.payType===PAY_FIXED) b.fixed = amt;
+  else if(t.payType===PAY_PCT) b.percent = Math.round(teacherCollectedInMonth(t.id, y, m) * amt / 100);
   else if(t.payType===PAY_HOURLY){ const o = teacherOvertimeInMonth(t, y, m); b.fixed = amt; b.overtime = o.amount; b.overtimeHours = o.hours; }
   else if(t.payType===PAY_FIXED_PCT){ b.fixed = amt; b.percent = Math.round(teacherCollectedInMonth(t.id, y, m) * (Number(t.payPercent)||0) / 100); }
   else b.perClass = amt * teacherClassCountInMonth(t.id, y, m);
@@ -1922,10 +1953,12 @@ function teacherSalaryBreakdown(t, y, m){
 function teacherGrossSalary(t, y, m){ return teacherSalaryBreakdown(t, y, m).total; }
 /* Short description of a person's pay agreement, e.g. for tables. */
 function teacherPayLabel(t){
-  if(t.payType===PAY_HOURLY) return `${afn(t.payAmount)} · ${faDigits(t.dailyHours||0)} ساعت در روز · اضافه‌کاری ${afn(t.overtimeRate)}/ساعت`;
+  if(t.payType===PAY_HOURLY) return `${afn(t.payAmount)} در ماه برای ${faDigits(t.dailyHours||0)} ساعت در روز (هر ساعت ${afn(teacherHourlyRate(t))})`;
   if(t.payType===PAY_FIXED_PCT) return `${afn(t.payAmount)} + ${faDigits(t.payPercent||0)}٪ شهریه`;
   if(!t.payAmount) return '-';
-  return t.payType==='درصد شهریه' ? faDigits(t.payAmount)+'٪' : afn(t.payAmount);
+  if(t.payType===PAY_PCT) return faDigits(t.payAmount)+'٪ شهریه';
+  if(t.payType===PAY_FIXED) return afn(t.payAmount)+' در ماه';
+  return afn(t.payAmount)+' برای هر صنف';
 }
 function teacherAdvanceBalance(teacherId){
   return db.teacherAdvances.filter(a=>a.teacherId===teacherId && !a.settled).reduce((s,a)=>s+(Number(a.amount)||0),0);
@@ -1988,7 +2021,7 @@ function paySalary(teacherId){
   const already = salaryPaymentsFor(teacherId, y, m);
   if(already.length && !confirm(`برای «${t.name}» حقوق ماه ${period} قبلاً ثبت شده است (${afn(already.reduce((s,e)=>s+(Number(e.amount)||0),0))}). دوباره ثبت شود؟`)) return;
   const bd = teacherSalaryBreakdown(t, y, m);
-  const parts = [bd.fixed&&('ثابت '+afn(bd.fixed)), bd.perClass&&('صنف‌ها '+afn(bd.perClass)), bd.percent&&('درصد شهریه '+afn(bd.percent)), bd.overtime&&(`اضافه‌کاری ${faDigits(bd.overtimeHours)} ساعت `+afn(bd.overtime))].filter(Boolean);
+  const parts = [bd.fixed&&((t.payType===PAY_HOURLY?'حقوق ساعات توافق‌شده ':'ثابت ')+afn(bd.fixed)), bd.perClass&&('صنف‌ها '+afn(bd.perClass)), bd.percent&&('درصد شهریه '+afn(bd.percent)), bd.overtime&&(`${faDigits(bd.overtimeHours)} ساعت اضافه `+afn(bd.overtime))].filter(Boolean);
   if(!confirm(`حقوق خالص ماه ${period}: ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}${parts.length>1?' = '+parts.join(' + '):''}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
   db.expenses.unshift({
     id: uid(), branch: BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
@@ -2391,7 +2424,9 @@ function renderTeachers(){
   document.getElementById('teachers-table').innerHTML = pageItems.map(t=>{
     const classes = teacherClassesList(t.id);
     const names = classes.map(c=>c.name||c.category).join('، ') || '-';
-    const payLabel = (t.payAmount||t.payType===PAY_FIXED_PCT||t.payType===PAY_HOURLY) ? `${esc(teacherPayLabel(t))} <span style="color:var(--text-faint);">(${esc(t.payType||'-')})</span>` : '-';
+    const payLabel = isLegacyPayType(t)
+      ? `<span class="tag cost" title="یکی از چهار نوع پرداخت را انتخاب کنید">${esc(payTypeLabel(t))}</span>${t.payAmount?` <span style="color:var(--text-faint);">${esc(teacherPayLabel(t))}</span>`:''}`
+      : `${esc(teacherPayLabel(t))} <span style="color:var(--text-faint);">(${esc(payTypeLabel(t))})</span>`;
     return `<tr>
       <td><span class="code-badge" onclick="openTeacherProfileModal('${escJs(t.id)}')">${esc(t.code||'-')}</span></td>
       <td>${esc(t.name)}</td><td><span class="tag info">${esc(t.role||'مدرس')}</span></td><td>${esc(t.phone||'-')}</td><td>${esc(t.subjects||'-')}</td><td class="num">${payLabel}</td>
@@ -2421,14 +2456,14 @@ function renderTeacherAdvances(){
   document.getElementById('payroll-table').innerHTML = db.teachers.map(t=>{
     const bd = teacherSalaryBreakdown(t, y, m);
     const cnt = t.payType===PAY_HOURLY ? `${faDigits(bd.overtimeHours)} ساعت اضافه`
-      : (t.payType==='ماهانه ثابت'||t.payType==='درصد شهریه'||t.payType===PAY_FIXED_PCT) ? '-' : faDigits(teacherClassCountInMonth(t.id, y, m));
+      : t.payType===PAY_PER_CLASS ? `${faDigits(teacherClassCountInMonth(t.id, y, m))} صنف` : '-';
     const gross = bd.total;
-    const parts = [bd.fixed&&('ثابت '+afn(bd.fixed)), bd.perClass&&('صنف‌ها '+afn(bd.perClass)), bd.percent&&('درصد شهریه '+afn(bd.percent)), bd.overtime&&('اضافه‌کاری '+afn(bd.overtime))].filter(Boolean);
+    const parts = [bd.fixed&&((t.payType===PAY_HOURLY?'حقوق ساعات توافق‌شده ':'ثابت ')+afn(bd.fixed)), bd.perClass&&('صنف‌ها '+afn(bd.perClass)), bd.percent&&('درصد شهریه '+afn(bd.percent)), bd.overtime&&(`${faDigits(bd.overtimeHours)} ساعت اضافه `+afn(bd.overtime))].filter(Boolean);
     const tax = teacherSalaryTax(gross);
     const advBal = teacherAdvanceBalance(t.id);
     const net = teacherNetSalary(t, y, m);
     return `<tr>
-      <td>${esc(t.name)}</td><td>${esc(t.payType||'-')}</td><td class="num">${esc(cnt)}</td>
+      <td>${esc(t.name)}</td><td>${isLegacyPayType(t) ? `<span class="tag cost">${esc(payTypeLabel(t))}</span>` : esc(payTypeLabel(t))}</td><td class="num">${esc(cnt)}</td>
       <td class="num" title="${esc(parts.join(' + '))}">${afn(gross)}${parts.length>1?`<div style="font-size:10.5px; color:var(--text-faint);">${esc(parts.join(' + '))}</div>`:''}</td><td class="num">${esc(tax?afn(tax):'-')}</td><td class="num">${esc(advBal?afn(advBal):'-')}</td>
       <td class="num"><b style="color:var(--gold-soft);">${afn(net)}</b></td>
       <td>${salaryPaymentsFor(t.id, y, m).length ? '<span class="tag income" style="margin-inline-end:6px;">پرداخت‌شده</span>' : ''}<button class="btn ghost small" onclick="paySalary('${escJs(t.id)}')">ثبت پرداخت</button></td>
