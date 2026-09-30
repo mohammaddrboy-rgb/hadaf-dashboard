@@ -1758,7 +1758,6 @@ function openTeacherModal(id){
       <div class="field"><label>نوع پرداخت *</label><select id="f-t-paytype" onchange="updateTeacherPayField()">
         <option value="" ${!t||!t.payType?'selected':''} disabled>نوع پرداخت را انتخاب کنید</option>
         ${PAY_TYPES.map(v=>`<option value="${esc(v)}" ${t&&t.payType===v?'selected':''}>${esc(PAY_TYPE_LABELS[v])}</option>`).join('')}
-        ${t && t.payType===PAY_PER_CLASS ? `<option value="${esc(PAY_PER_CLASS)}" selected>${esc(PAY_TYPE_LABELS[PAY_PER_CLASS])}</option>` : ''}
       </select></div>
       <div class="field"><label id="f-t-payamount-label">مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${esc(t&&t.payAmount?numFmt(t.payAmount):'')}" oninput="formatMoneyInput(this); updateTeacherPayField()" placeholder="۰"></div>
     </div>
@@ -1810,7 +1809,7 @@ function updateTeacherPayField(){
   } else if(sel.value===PAY_PER_CLASS){
     label.textContent = 'مبلغ برای هر صنف (افغانی)';
     input.placeholder = '۰';
-    hint.textContent = 'این نوع پرداخت دیگر استفاده نمی‌شود. لطفاً یکی از چهار نوع پرداخت را انتخاب کنید؛ تا آن زمان حقوق به همان روش قبلی (مبلغ × تعداد صنف‌های ماه) محاسبه می‌شود.';
+    hint.textContent = 'این مبلغ برای هر صنفی که مدرس در یک ماه دارد پرداخت می‌شود (مبلغ × تعداد صنف‌های آغازشده در آن ماه). برای صنف دو مدرسه نصف این مبلغ حساب می‌شود.';
   } else {
     input.parentElement.style.display = 'none';
     hint.textContent = 'نوع پرداخت را انتخاب کنید.';
@@ -1983,7 +1982,7 @@ function classFeesCollected(classId){
 function classFeesCollectedInMonth(classId, y, m){
   return db.students.filter(s=>s.classId===classId && dateInMonth(s.registerDate, y, m)).reduce((sum,s)=>sum+(Number(s.paidAmount)||0),0);
 }
-/* HADAF's four salary types (stored in teacher.payType):
+/* HADAF's salary types (stored in teacher.payType):
    1. PAY_PCT        payAmount% of the fees collected that month for their classes.
    2. PAY_FIXED      a fixed monthly salary (payAmount), whatever the classes.
    3. PAY_HOURLY     hourly: payAmount a month for `dailyHours` hours a day, so the
@@ -1993,22 +1992,23 @@ function classFeesCollectedInMonth(classId, y, m){
                      (teacherAttendance[].hours[teacherId]). Short days are not deducted.
    4. PAY_FIXED_PCT  a fixed monthly salary (payAmount, non-teaching work) plus
                      payPercent% of the fees collected that month for their classes.
-   PAY_PER_CLASS (payAmount × classes started that month) is no longer offered;
-   people still on it keep being paid that way until their type is changed. */
+   5. PAY_PER_CLASS  a fixed amount (payAmount) for each class started that month.
+   In every type a two-teacher class counts as half (see classPayShare). */
 const PAY_PCT = 'درصد شهریه';
 const PAY_FIXED = 'ماهانه ثابت';
 const PAY_HOURLY = 'ساعتی';
 const PAY_FIXED_PCT = 'ثابت ماهانه + درصد شهریه';
 const PAY_PER_CLASS = 'به ازای هر صنف (ماهانه)';
-const PAY_TYPES = [PAY_PCT, PAY_FIXED, PAY_HOURLY, PAY_FIXED_PCT];
+const PAY_TYPES = [PAY_PCT, PAY_FIXED, PAY_HOURLY, PAY_FIXED_PCT, PAY_PER_CLASS];
 const PAY_TYPE_LABELS = {
   [PAY_PCT]: '۱. درصد از شهریهٔ جمع‌آوری‌شدهٔ صنف‌ها',
   [PAY_FIXED]: '۲. حقوق ثابت ماهانه',
   [PAY_HOURLY]: '۳. ساعتی (بر اساس ساعات کار روزانه)',
   [PAY_FIXED_PCT]: '۴. حقوق ثابت ماهانه + درصد شهریهٔ صنف‌ها',
-  [PAY_PER_CLASS]: 'به ازای هر صنف (قدیمی — لطفاً نوع پرداخت را تغییر دهید)',
+  [PAY_PER_CLASS]: '۵. مبلغ ثابت به ازای هر صنف در ماه',
 };
 function payTypeLabel(t){ return t && t.payType ? (PAY_TYPE_LABELS[t.payType] || t.payType) : 'تعیین نشده'; }
+/* True when no (known) salary type has been chosen yet, e.g. a teacher added with «+ مدرس». */
 function isLegacyPayType(t){ return !t.payType || !PAY_TYPES.includes(t.payType); }
 /* Hourly rate for PAY_HOURLY: the monthly amount spread over the agreed daily hours. */
 function teacherHourlyRate(t){
@@ -2553,7 +2553,7 @@ function renderTeachers(){
     const classes = teacherClassesList(t.id);
     const names = classes.map(c=>c.name||c.category).join('، ') || '-';
     const payLabel = isLegacyPayType(t)
-      ? `<span class="tag cost" title="یکی از چهار نوع پرداخت را انتخاب کنید">${esc(payTypeLabel(t))}</span>${t.payAmount?` <span style="color:var(--text-faint);">${esc(teacherPayLabel(t))}</span>`:''}`
+      ? `<span class="tag cost" title="نوع پرداخت را انتخاب کنید">${esc(payTypeLabel(t))}</span>${t.payAmount?` <span style="color:var(--text-faint);">${esc(teacherPayLabel(t))}</span>`:''}`
       : `${esc(teacherPayLabel(t))} <span style="color:var(--text-faint);">(${esc(payTypeLabel(t))})</span>`;
     return `<tr>
       <td><span class="code-badge" onclick="openTeacherProfileModal('${escJs(t.id)}')">${esc(t.code||'-')}</span></td>

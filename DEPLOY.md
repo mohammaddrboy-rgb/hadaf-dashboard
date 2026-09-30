@@ -20,7 +20,7 @@ or saving will fail.
   requests without a login. Nothing on the server is lost, but edits made
   in such a tab stay in that browser until it is reloaded.
 - New features: server login, merging of simultaneous edits, 80 mm
-  receipts, class sessions (Sat–Thu), four salary types, two-teacher
+  receipts, class sessions (Sat–Thu), five salary types, two-teacher
   classes, and the Afghan calendar in salaries and reports. See the pull
   request description for details.
 
@@ -108,9 +108,9 @@ Then, in a browser:
   readable (in `js/seed.js` and via `/api/db`) and remain in git history.
   A shareholder can do this with the «تولید رمز جدید» button in each
   person's profile.
-- In the personnel list, anyone paid «به ازای هر صنف» (per class) is
-  marked red. Their pay keeps working as before, including the half rule
-  for two-teacher classes.
+- In the personnel list, anyone without a salary type (e.g. teachers added
+  quickly from the class form with «+ مدرس») is marked red «تعیین نشده»;
+  choose one of the five salary types for them.
 
 ## Rolling back
 
