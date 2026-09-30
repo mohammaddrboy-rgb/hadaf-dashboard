@@ -339,10 +339,10 @@
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>محاسبهٔ حقوق این ماه</h2></div>
-        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">تعداد صنف‌های هر مدرس در ماه جاری به‌صورت خودکار شمارش و در نرخ ضرب می‌شود؛ سپس مالیات حقوق و مانده پیش‌پرداخت‌های تسویه‌نشده از آن کسر می‌گردد. درصد مالیات از «تنظیمات» قابل تغییر است.</p>
+        <div class="panel-head"><h2><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>محاسبهٔ حقوق ماهانه</h2><div id="payroll-period-bar"></div></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">حقوق بر اساس ماه‌های هجری شمسی (حمل، ثور، …) محاسبه می‌شود. ماه را از بالا انتخاب کنید؛ مثلاً در اوایل عقرب، ماه میزان را برای پرداخت حقوق میزان. تعداد صنف‌های هر مدرس در آن ماه به‌صورت خودکار شمارش و در نرخ ضرب می‌شود؛ سپس مالیات حقوق و مانده پیش‌پرداخت‌های تسویه‌نشده از آن کسر می‌گردد. درصد مالیات از «تنظیمات» قابل تغییر است.</p>
         <div class="table-scroll"><table>
-          <thead><tr><th>مدرس</th><th>نوع پرداخت</th><th class="num">صنف‌های این ماه</th><th class="num">حقوق ناخالص</th><th class="num">مالیات</th><th class="num">مانده پیش‌پرداخت</th><th class="num">خالص قابل پرداخت</th><th></th></tr></thead>
+          <thead><tr><th>مدرس</th><th>نوع پرداخت</th><th class="num">صنف‌ها / اضافه‌کاری ماه</th><th class="num">حقوق ناخالص</th><th class="num">مالیات</th><th class="num">مانده پیش‌پرداخت</th><th class="num">خالص قابل پرداخت</th><th></th></tr></thead>
           <tbody id="payroll-table"></tbody>
         </table></div>
         <div class="empty" id="payroll-empty" style="display:none;">هنوز مدرسی ثبت نشده.</div>
@@ -447,15 +447,7 @@
           <div class="filterbar" id="expenses-filters" style="margin:0;"></div>
           <div style="display:flex; gap:8px; align-items:center;">
             <label for="expenses-tf" style="font-size:12.5px; color:var(--text-dim);">بازهٔ زمانی:</label>
-            <select id="expenses-tf" onchange="onExpenseTimeFilterChange()">
-              <option value="all">همه</option>
-              <option value="daily">روزانه</option>
-              <option value="weekly">هفتگی</option>
-              <option value="monthly">ماهانه</option>
-              <option value="quarterly">فصلی</option>
-              <option value="biannual">شش‌ماهه</option>
-              <option value="annual">سالانه</option>
-            </select>
+            <select id="expenses-tf" onchange="onExpenseTimeFilterChange()"></select>
           </div>
         </div>
         <div class="table-scroll"><table>
@@ -694,6 +686,15 @@
         <input id="restore-file-input" type="file" accept="application/json" onchange="importBackup(this)">
       </div>
       <div class="panel">
+        <div class="panel-head"><h2>تنظیمات چاپ رسید</h2></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">رسید ثبت‌نام روی رول حرارتی ۸۰ میلی‌متری چاپ می‌شود. جهت چاپ را انتخاب کنید: «عمودی» یک رسید باریک است و «افقی» رسید را به‌صورت چرخیده در طول رول چاپ می‌کند. این انتخاب برای همین دستگاه ذخیره می‌شود و در پنجرهٔ چاپ هم قابل تغییر است.</p>
+        <div class="field-row">
+          <div class="field"><label for="f-print-size">اندازهٔ کاغذ</label><select id="f-print-size"></select></div>
+          <div class="field"><label for="f-print-orient">جهت چاپ رسید</label><select id="f-print-orient"><option value="portrait">عمودی</option><option value="landscape">افقی</option></select></div>
+        </div>
+        <button type="button" class="btn" onclick="savePrintSettings()">ذخیرهٔ تنظیمات چاپ</button>
+      </div>
+      <div class="panel">
         <div class="panel-head"><h2>همگام‌سازی با سرور (داده‌های مشترک)</h2></div>
         <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">داده‌های سامانه روی سرور نگهداری و بین همهٔ دستگاه‌ها به اشتراک گذاشته می‌شود؛ هر تغییری که هر کاربر انجام دهد، برای بقیه هم دیده می‌شود. اگر داده‌های همین مرورگر درست‌تر است و می‌خواهید آن را نسخهٔ مشترک همه کنید، از دکمهٔ زیر استفاده کنید.</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
@@ -719,7 +720,7 @@
       </div>
       <div class="panel" id="settings-pins-panel" style="display:none;">
         <div class="panel-head"><h2>رمزهای عبور ورود</h2></div>
-        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">این رمزها برای تفکیک دسترسی پرسنل و مدرسان در مرورگر هستند. هر سهامدار، مدرس و مدیر شعبه رمز عبور یکتای خودش را دارد که در صفحهٔ «سهامداران» یا «پرسنل» با کلیک روی کد پرونده قابل مشاهده و تغییر است.</p>
+        <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">این رمزها هنگام ورود روی سرور بررسی می‌شوند و فقط سهامداران آن‌ها را می‌بینند. هر سهامدار، مدرس و مدیر شعبه رمز عبور یکتای خودش را دارد که در صفحهٔ «سهامداران» یا «پرسنل» با کلیک روی کد پرونده قابل مشاهده و تغییر است.</p>
       </div>
     </section>
   </main>
@@ -883,11 +884,11 @@
 </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="js/seed.js"></script>
-  <script src="js/app.js?v=4.2"></script>
-  <script src="js/discount-codes.js?v=1.0"></script>
-  <script src="js/updates.js?v=1.6"></script>
-  <script src="js/updates2.js?v=1.0"></script>
-  <script src="js/sync.js?v=1.1"></script>
+  <script src="js/seed.js?v=2.0"></script>
+  <script src="js/app.js?v=5.0"></script>
+  <script src="js/discount-codes.js?v=1.1"></script>
+  <script src="js/updates.js?v=2.3"></script>
+  <script src="js/updates2.js?v=1.8"></script>
+  <script src="js/sync.js?v=2.0"></script>
 </body>
 </html>

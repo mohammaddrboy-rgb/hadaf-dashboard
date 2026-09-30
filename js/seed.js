@@ -2303,7 +2303,7 @@ window.HADAF_SEED = {
       "code": "T1404060001",
       "photo": "",
       "idPhoto": "",
-      "password": "782554"
+      "password": ""
     },
     {
       "id": "t2",
@@ -2320,7 +2320,7 @@ window.HADAF_SEED = {
       "code": "T1404070001",
       "photo": "",
       "idPhoto": "",
-      "password": "150631"
+      "password": ""
     },
     {
       "id": "t3",
@@ -2337,7 +2337,7 @@ window.HADAF_SEED = {
       "code": "T1404080001",
       "photo": "",
       "idPhoto": "",
-      "password": "175954"
+      "password": ""
     },
     {
       "id": "t4",
@@ -2354,7 +2354,7 @@ window.HADAF_SEED = {
       "code": "T1404100001",
       "photo": "",
       "idPhoto": "",
-      "password": "961168"
+      "password": ""
     },
     {
       "id": "t5",
@@ -2371,7 +2371,7 @@ window.HADAF_SEED = {
       "code": "M1404050001",
       "photo": "",
       "idPhoto": "",
-      "password": "661913"
+      "password": ""
     },
     {
       "id": "t6",
@@ -2388,7 +2388,7 @@ window.HADAF_SEED = {
       "code": "T1404110001",
       "photo": "",
       "idPhoto": "",
-      "password": "198702"
+      "password": ""
     },
     {
       "id": "t7",
@@ -2405,7 +2405,7 @@ window.HADAF_SEED = {
       "code": "E1404060001",
       "photo": "",
       "idPhoto": "",
-      "password": "483452"
+      "password": ""
     }
   ],
   "donations": [
@@ -2753,7 +2753,7 @@ window.HADAF_SEED = {
       "idPhoto": "",
       "note": "بنیان‌گذار و سهامدار اصلی",
       "createdAt": "2026-08-06",
-      "password": "439563"
+      "password": ""
     },
     {
       "id": "sh2",
@@ -2765,7 +2765,7 @@ window.HADAF_SEED = {
       "idPhoto": "",
       "note": "سهامدار و شریک راهبردی",
       "createdAt": "2026-08-06",
-      "password": "258176"
+      "password": ""
     },
     {
       "id": "sh3",
@@ -2777,7 +2777,7 @@ window.HADAF_SEED = {
       "idPhoto": "",
       "note": "سهامدار",
       "createdAt": "2026-08-06",
-      "password": "514002"
+      "password": ""
     }
   ],
   "bookPurchases": [

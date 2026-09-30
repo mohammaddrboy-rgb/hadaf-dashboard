@@ -20,29 +20,49 @@ function teacherSalaryPayments(teacherId){
 /* ---- Reusable income breakdown block for a teacher ---- */
 function teacherIncomeHtml(t){
   if(!t) return '';
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
+  const { y, m } = currentSalaryPeriod(); // Afghan calendar month
+  const monthName = salaryPeriodLabel(y, m);
   const classes = teacherClassesList(t.id);
-  const pct = Number(t.payAmount)||0;
-  const isPct = t.payType==='درصد شهریه';
-  const isFixed = t.payType==='ماهانه ثابت';
+  const isHourly = t.payType===PAY_HOURLY;
+  const isFixedPct = t.payType===PAY_FIXED_PCT;
+  const pct = isFixedPct ? (Number(t.payPercent)||0) : (Number(t.payAmount)||0);
+  const isPct = t.payType===PAY_PCT || isFixedPct;   // per-class share is a % of fees
+  const isFixed = t.payType===PAY_FIXED;
 
-  const monthGross = teacherGrossSalary(t, y, m);
+  const bd = teacherSalaryBreakdown(t, y, m);
+  const monthGross = bd.total;
 
   // Per-class rows (meaningful for percentage & per-class types)
   let classRows = '';
   let lifetimeTotal = 0;
-  if(isFixed){
+  let tableHead = '';
+  if(isHourly){
+    // One row per day with recorded hours this month.
+    const ot = teacherOvertimeInMonth(t, y, m);
+    tableHead = `<th>تاریخ (${esc(monthName)})</th><th class="num">ساعات کار</th><th class="num">ساعات اضافه</th><th class="num">مبلغ ساعات اضافه</th>`;
+    classRows = ot.days.length ? ot.days.map(d=>`<tr>
+        <td>${toJalali(d.date)}</td><td class="num">${faDigits(d.worked)}</td><td class="num">${d.extra?faDigits(d.extra):'-'}</td>
+        <td class="num">${d.amount?`<b style="color:var(--gold-soft, var(--income));">${afn(d.amount)}</b>`:'-'}</td>
+      </tr>`).join('') : `<tr><td colspan="4" class="empty">ساعات کار این ماه هنوز ثبت نشده است.</td></tr>`;
+    // Two-teacher classes inside the agreed hours: the other teacher's sessions are deducted.
+    classRows += teacherSharedClassDeduction(t, y, m).items.map(it=>{
+      const c = db.classes.find(x=>x.id===it.classId) || {};
+      return `<tr><td colspan="3">صنف دو مدرسه «${esc(c.name||c.category||'')}»: ${faDigits(it.sessions)} جلسهٔ مدرس دیگر × ${faDigits(Math.round(it.hours*100)/100)} ساعت</td>
+        <td class="num" style="color:var(--cost);">−${afn(it.amount)}</td></tr>`;
+    }).join('');
+    lifetimeTotal = monthGross;
+  } else if(isFixed){
     classRows = `<tr><td colspan="4" class="empty">حقوق شما ماهانهٔ ثابت است (${afn(t.payAmount)}) و به تفکیک هر صنف محاسبه نمی‌شود.</td></tr>`;
     lifetimeTotal = Number(t.payAmount)||0;
   } else if(classes.length){
     classRows = classes.map(c=>{
       const collected = classFeesCollected(c.id);
-      const share = isPct ? Math.round(collected * pct / 100) : (Number(t.payAmount)||0);
+      const part = classPayShare(c, t.id); // ½ for a two-teacher class
+      const share = Math.round((isPct ? collected * pct / 100 : (Number(t.payAmount)||0)) * part);
       lifetimeTotal += share;
       return `<tr>
-        <td>${c.name||c.category}</td>
-        <td>${c.branch||'-'}</td>
+        <td>${esc(c.name||c.category)}${isSharedClass(c)?`<div style="font-size:11px; color:var(--text-dim);">دو مدرسه (۵۰٪) · ${esc(classTeacherSkills(c,t.id)||'-')} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,t.id)])}</div>`:''}</td>
+        <td>${esc(c.branch||'-')}</td>
         <td class="num">${afn(collected)}</td>
         <td class="num"><b style="color:var(--gold-soft, var(--income));">${afn(share)}</b></td>
       </tr>`;
@@ -52,10 +72,17 @@ function teacherIncomeHtml(t){
   }
 
   const shareHeader = isPct ? 'سهم شما (٪ شهریه)' : 'درآمد شما از این صنف';
-  const collectedNote = isPct
+  if(!tableHead) tableHead = `<th>صنف</th><th>شعبه</th><th class="num">شهریهٔ جمع‌آوری‌شده</th><th class="num">${esc(shareHeader)}</th>`;
+  const collectedNote = !t.payType
+    ? 'نوع پرداخت شما هنوز تعیین نشده است؛ با مدیریت هماهنگ کنید.'
+    : isHourly
+    ? `نوع پرداخت شما: <b>ساعتی</b> — ${afn(t.payAmount)} در ماه برای ${faDigits(t.dailyHours||0)} ساعت کار در روز (هر ساعت ${afn(teacherHourlyRate(t))})، پرداخت در پایان هر ماه. برای هر ساعت کار بیشتر در یک روز، همین نرخ ساعتی اضافه می‌شود. ماه ${esc(monthName)}: ${faDigits(bd.overtimeHours)} ساعت اضافه = ${afn(bd.overtime)}.`
+    : isFixedPct
+    ? `نوع پرداخت شما: <b>حقوق ثابت ماهانه + درصد شهریه</b> — ${afn(t.payAmount)} در ماه برای کارهای غیرتدریسی، به‌علاوهٔ ${faDigits(pct)}٪ از شهریهٔ جمع‌آوری‌شدهٔ هر صنف. ماه ${esc(monthName)}: ثابت ${afn(bd.fixed)} + سهم شهریه ${afn(bd.percent)}.`
+    : isPct
     ? `نوع پرداخت شما: <b>درصد شهریه</b> — ${faDigits(pct)}٪ از شهریهٔ جمع‌آوری‌شدهٔ هر صنف.`
     : isFixed
-      ? `نوع پرداخت شما: <b>ماهانهٔ ثابت</b> — ${afn(t.payAmount)} در ماه.`
+      ? `نوع پرداخت شما: <b>حقوق ثابت ماهانه</b> — ${afn(t.payAmount)} در ماه.`
       : `نوع پرداخت شما: <b>به ازای هر صنف</b> — ${afn(t.payAmount)} برای هر صنف در ماه.`;
 
   // Income tax withheld (percentage set by shareholders)
@@ -72,20 +99,20 @@ function teacherIncomeHtml(t){
     <tr>
       <td>${toJalali(p.date)}</td>
       <td class="num">${afn(p.amount)}</td>
-      <td>${(p.salaryPeriodM!=null) ? faDigits(p.salaryPeriodM+1)+'/'+faDigits(p.salaryPeriodY) : '-'}</td>
-      <td>${p.note||'-'}</td>
+      <td>${esc(p.salaryPeriodJM ? salaryPeriodLabel(p.salaryPeriodJY, p.salaryPeriodJM) : (p.salaryPeriodM!=null) ? faDigits(p.salaryPeriodM+1)+'/'+faDigits(p.salaryPeriodY) : '-')}</td>
+      <td>${esc(p.note||'-')}</td>
     </tr>`).join('') : `<tr><td colspan="4" class="empty">هنوز حقوقی برای شما ثبت/پرداخت نشده است.</td></tr>`;
 
   return `
     <div class="sectiontitle">درآمد و حقوق</div>
     <p class="hint" style="margin:-6px 0 12px;">${collectedNote}</p>
     <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:16px;">
-      <div class="card c-income"><div class="label">${isFixed?'حقوق ماهانهٔ ثابت':'درآمد تخمینی این ماه'}</div><div class="value income">${afn(monthGross)}</div></div>
-      <div class="card c-profit"><div class="label">${isPct?'مجموع درآمد شما (تجمعی)':'مجموع درآمد تخمینی'}</div><div class="value profit">${afn(lifetimeTotal)}</div></div>
+      <div class="card c-income"><div class="label">${isFixed?'حقوق ماهانهٔ ثابت':`درآمد تخمینی ماه ${esc(monthName)}`}</div><div class="value income">${afn(monthGross)}</div></div>
+      <div class="card c-profit"><div class="label">${isHourly?`ساعات اضافهٔ ماه ${esc(monthName)}`:isFixedPct?'مجموع سهم شهریهٔ شما (تجمعی)':isPct?'مجموع درآمد شما (تجمعی)':'مجموع درآمد تخمینی'}</div><div class="value profit">${afn(isHourly?bd.overtime:lifetimeTotal)}</div></div>
       <div class="card c-info"><div class="label">مجموع حقوق پرداخت‌شده به شما</div><div class="value info">${afn(totalPaid)}</div></div>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>صنف</th><th>شعبه</th><th class="num">شهریهٔ جمع‌آوری‌شده</th><th class="num">${shareHeader}</th></tr></thead>
+      <thead><tr>${tableHead}</tr></thead>
       <tbody>${classRows}</tbody>
     </table></div>
 
@@ -94,8 +121,8 @@ function teacherIncomeHtml(t){
     <div class="table-scroll"><table>
       <thead><tr><th>دوره</th><th class="num">حقوق ناخالص</th><th class="num">مالیات (${faDigits(taxPct)}٪)</th><th class="num">خالص پس از مالیات</th></tr></thead>
       <tbody>
-        <tr><td>${isFixed?'این ماه (ثابت)':'این ماه'}</td><td class="num">${afn(monthGross)}</td><td class="num">${afn(monthTax)}</td><td class="num"><b style="color:var(--income);">${afn(monthNet)}</b></td></tr>
-        <tr><td>مجموع (تجمعی)</td><td class="num">${afn(lifetimeTotal)}</td><td class="num">${afn(lifeTax)}</td><td class="num"><b style="color:var(--income);">${afn(lifeNet)}</b></td></tr>
+        <tr><td>${isFixed?'این ماه (ثابت)':`ماه ${esc(monthName)}`}</td><td class="num">${afn(monthGross)}</td><td class="num">${afn(monthTax)}</td><td class="num"><b style="color:var(--income);">${afn(monthNet)}</b></td></tr>
+        ${isHourly ? '' : `<tr><td>${isFixedPct?'مجموع سهم شهریه (تجمعی)':'مجموع (تجمعی)'}</td><td class="num">${afn(lifetimeTotal)}</td><td class="num">${afn(lifeTax)}</td><td class="num"><b style="color:var(--income);">${afn(lifeNet)}</b></td></tr>`}
       </tbody>
     </table></div>
 
@@ -121,7 +148,7 @@ function renderMyIncome(){
   const t = db.teachers.find(x=>x.id===currentTeacherId);
   if(!t){ root.innerHTML = `<div class="panel"><p style="color:var(--text-dim); text-align:center; padding:12px;">اطلاعات پرسنل یافت نشد.</p></div>`; return; }
   root.innerHTML = `<div class="panel">
-    <div class="panel-head"><h2>درآمد و حقوق ${t.name} <span style="font-size:12px; color:var(--text-dim);">(${t.role||'مدرس'})</span></h2></div>
+    <div class="panel-head"><h2>درآمد و حقوق ${esc(t.name)} <span style="font-size:12px; color:var(--text-dim);">(${esc(t.role||'مدرس')})</span></h2></div>
     ${teacherIncomeHtml(t)}
   </div>`;
 }
@@ -141,14 +168,14 @@ function renderAssets(){
   const list = db.assets || [];
   const rows = list.length ? list.map(a=>`
     <tr>
-      <td>${a.name||'-'}</td>
-      <td>${a.category||'-'}</td>
+      <td>${esc(a.name||'-')}</td>
+      <td>${esc(a.category||'-')}</td>
       <td class="num">${afn(a.value)}</td>
-      <td>${a.acquiredDate?toJalali(a.acquiredDate):'-'}</td>
-      <td>${a.note||'-'}</td>
+      <td>${esc(a.acquiredDate?toJalali(a.acquiredDate):'-')}</td>
+      <td>${esc(a.note||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openAssetModal('${a.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteAsset('${a.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openAssetModal('${escJs(a.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteAsset('${escJs(a.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`).join('') : '';
 
@@ -176,13 +203,13 @@ function openAssetModal(id){
   const a = id ? (db.assets||[]).find(x=>x.id===id) : null;
   openModal(`
     <h3>${a?'ویرایش دارایی':'دارایی جدید'}</h3>
-    <div class="field"><label>نام دارایی</label><input id="f-asset-name" value="${a?(a.name||''):''}" placeholder="مثلاً: پروجکتور صنف ۳"></div>
+    <div class="field"><label>نام دارایی</label><input id="f-asset-name" value="${esc(a?(a.name||''):'')}" placeholder="مثلاً: پروجکتور صنف ۳"></div>
     <div class="field-row">
       <div class="field"><label>دسته</label><select id="f-asset-category">${categoryOptionsHtml(ASSET_CATEGORIES, a?a.category:ASSET_CATEGORIES[0])}</select></div>
-      <div class="field"><label>ارزش (افغانی)</label><input id="f-asset-value" class="money-input" value="${a&&a.value?numFmt(a.value):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+      <div class="field"><label>ارزش (افغانی)</label><input id="f-asset-value" class="money-input" value="${esc(a&&a.value?numFmt(a.value):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     </div>
     <div class="field"><label>تاریخ تملک</label>${jalaliPicker('f-asset-date', a?a.acquiredDate:null)}</div>
-    <div class="field"><label>توضیحات</label><input id="f-asset-note" value="${a?(a.note||''):''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-asset-note" value="${esc(a?(a.note||''):'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveAsset(${a?`'${a.id}'`:'null'})">ذخیره</button>
@@ -278,27 +305,24 @@ function renderTaxReport(){
   const byBranch = taxFeesByBranch();
   const monthly = taxMonthly();
 
-  const tfOpts = [
-    ['all','همه'],['daily','روزانه'],['weekly','هفتگی'],['monthly','ماهانه'],
-    ['quarterly','فصلی'],['biannual','شش‌ماهه'],['annual','سالانه']
-  ].map(([v,l])=>`<option value="${v}" ${taxFilter.tf===v?'selected':''}>${l}</option>`).join('');
+  const tfOpts = TIMEFRAMES.map(t=>[t.key, t.label]).map(([v,l])=>`<option value="${esc(v)}" ${taxFilter.tf===v?'selected':''}>${esc(l)}</option>`).join('');
   const brOpts = `<option value="all" ${taxFilter.branch==='all'?'selected':''}>همهٔ شعبه‌ها</option>` +
-    BRANCHES.map(b=>`<option value="${b}" ${taxFilter.branch===b?'selected':''}>${b}</option>`).join('');
+    BRANCHES.map(b=>`<option value="${esc(b)}" ${taxFilter.branch===b?'selected':''}>${esc(b)}</option>`).join('');
 
   const monthRows = monthly.length ? monthly.map(m=>`
     <tr>
-      <td>${AFG_MONTHS[m.jm-1]} ${faDigits(m.jy)}</td>
+      <td>${esc(AFG_MONTHS[m.jm-1])} ${faDigits(m.jy)}</td>
       <td class="num">${afn(m.fees)}</td>
       <td class="num">${afn(m.cost)}</td>
       <td class="num"><b style="color:${m.fees-m.cost>=0?'var(--income)':'var(--cost)'};">${afn(m.fees-m.cost)}</b></td>
     </tr>`).join('') : `<tr><td colspan="4" class="empty">در این بازه داده‌ای نیست.</td></tr>`;
 
   const costRows = TAX_COST_CATEGORIES.map(c=>`
-    <tr><td>${c}</td><td class="num">${afn(costByCat[c]||0)}</td></tr>
+    <tr><td>${esc(c)}</td><td class="num">${afn(costByCat[c]||0)}</td></tr>
   `).join('');
 
   const branchRows = BRANCHES.map(b=>`
-    <tr><td>${b}</td><td class="num">${afn(byBranch[b]||0)}</td></tr>
+    <tr><td>${esc(b)}</td><td class="num">${afn(byBranch[b]||0)}</td></tr>
   `).join('');
 
   root.innerHTML = `
@@ -309,7 +333,7 @@ function renderTaxReport(){
       </div>
       <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">
         این گزارش فقط شامل <b>شهریهٔ جمع‌آوری‌شده (نقدی)</b> است و درآمد کتاب، کارت شاگردی، سایر درآمدها و سمینارها را در بر نمی‌گیرد.
-        هزینه‌های محاسبه‌شده تنها این دسته‌ها هستند: <b>${TAX_COST_CATEGORIES.join('، ')}</b>.
+        هزینه‌های محاسبه‌شده تنها این دسته‌ها هستند: <b>${esc(TAX_COST_CATEGORIES.join('، '))}</b>.
         مبالغ شهریه بر اساس تاریخ ثبت‌نام هر شاگرد در بازهٔ انتخابی محاسبه می‌شوند.
       </p>
       <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
@@ -363,7 +387,7 @@ function exportTaxReport(){
   const totalCost = Object.values(costByCat).reduce((a,b)=>a+b,0);
   const byBranch = taxFeesByBranch();
   const monthly = taxMonthly();
-  const tfLabel = ({all:'همه',daily:'روزانه',weekly:'هفتگی',monthly:'ماهانه',quarterly:'فصلی',biannual:'شش‌ماهه',annual:'سالانه'})[taxFilter.tf]||taxFilter.tf;
+  const tfLabel = timeframeLabel(taxFilter.tf)||taxFilter.tf;
 
   const summary = [
     {'مورد':'بازهٔ زمانی','مبلغ (افغانی)':tfLabel},
@@ -393,7 +417,43 @@ function exportTaxReport(){
  * course registrations (current + previous). The registrar can pick the paper
  * size/orientation before printing.
  * ------------------------------------------------------------------------- */
-function printStudentProfile(profileId){
+/* ---------------- Receipt print settings (per device) ----------------
+   The receipt printer is an 80 mm thermal roll (Xprinter XP-Q200/XP-Q80,
+   72 mm printable). Each device remembers its paper size and whether the
+   registration receipt prints vertically (narrow slip) or horizontally
+   (landscape layout printed sideways along the roll). */
+const PRINT_PREFS_KEY = 'hadaf_print_prefs';
+const PRINT_SIZES = [
+  ['thermal80','رول ۸۰ میلی‌متری (رسید حرارتی)'], ['A4','A4'], ['A5','A5'], ['A3','A3'], ['Letter','Letter (نامه)'], ['Legal','Legal'],
+];
+function getPrintPrefs(){
+  let p = {};
+  try { p = JSON.parse(localStorage.getItem(PRINT_PREFS_KEY) || '{}') || {}; } catch(e) {}
+  return {
+    size: PRINT_SIZES.some(x=>x[0]===p.size) ? p.size : 'thermal80',
+    orient: p.orient==='landscape' ? 'landscape' : 'portrait',
+  };
+}
+function setPrintPrefs(patch){
+  const next = Object.assign(getPrintPrefs(), patch||{});
+  try { localStorage.setItem(PRINT_PREFS_KEY, JSON.stringify(next)); } catch(e) {}
+  return next;
+}
+function renderPrintSettings(){
+  const sz = document.getElementById('f-print-size'), or = document.getElementById('f-print-orient');
+  if(!sz || !or) return;
+  const p = getPrintPrefs();
+  if(!sz.options.length) sz.innerHTML = PRINT_SIZES.map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join('');
+  sz.value = p.size; or.value = p.orient;
+}
+function savePrintSettings(){
+  setPrintPrefs({ size: document.getElementById('f-print-size').value, orient: document.getElementById('f-print-orient').value });
+  alert('تنظیمات چاپ برای این دستگاه ذخیره شد.');
+}
+
+/* Print window for a student: registration receipt (thermal roll) or the full
+   profile sheet (A4 etc.). Pass enrollmentId to preselect one registration. */
+function printStudentProfile(profileId, enrollmentId){
   const p = profileById(profileId); if(!p) return;
   const rows = profileEnrollments(profileId);
 
@@ -406,17 +466,17 @@ function printStudentProfile(profileId){
     const card = s.idCardPrice ? (s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده') : '—';
     return `<tr>
       <td>${faDigits(i+1)}</td>
-      <td>${className(s.classId)}</td>
-      <td>${classBranch(s.classId)}</td>
+      <td>${esc(className(s.classId))}</td>
+      <td>${esc(classBranch(s.classId))}</td>
       <td>${toJalali(s.registerDate)}</td>
-      <td>${classStatus(cls)}</td>
+      <td>${esc(classStatus(cls))}</td>
       <td>${faDigits(studentTotalDiscountPercent(s))}٪</td>
       <td>${afn(net)}</td>
       <td>${afn(paid)}</td>
       <td>${afn(remain)}</td>
-      <td>${book}</td>
-      <td>${card}</td>
-      <td>${s.result || 'در حال آموزش'}</td>
+      <td>${esc(book)}</td>
+      <td>${esc(card)}</td>
+      <td>${esc(s.result || 'در حال آموزش')}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="12" style="text-align:center; color:#666;">هنوز در صنفی ثبت‌نام نشده است.</td></tr>`;
 
@@ -428,51 +488,74 @@ function printStudentProfile(profileId){
     <td colspan="3"></td>
   </tr>` : '';
 
-  const photo = p.photo ? `<img class="photo" src="${p.photo}" alt="">` : '';
+  const photo = p.photo ? `<img class="photo" src="${esc(p.photo)}" alt="">` : '';
   const logo = `${location.origin}/assets/logo.png`;
   const nowJ = toJalali(todayISO());
 
-  // Compact 80mm receipt rows (student info + amount paid) — one block per enrollment
+  const prefs = getPrintPrefs();
+  const selected = (enrollmentId && rows.some(s=>s.id===enrollmentId)) ? enrollmentId : 'all';
+
+  // One block per registration, used by both receipt layouts. Amounts are kept on
+  // data-* attributes so the print window can total only the selected ones.
   const receiptItems = rows.length ? rows.map(s=>{
     const net = studentNetFee(s), paid = Number(s.paidAmount)||0, remain = studentRemaining(s);
     const disc = studentTotalDiscountPercent(s);
-    return `<div class="r-item">
-      <div class="r-line"><span>صنف</span><b>${className(s.classId)}</b></div>
-      <div class="r-line"><span>شعبه</span><span>${classBranch(s.classId)}</span></div>
+    return `<div class="r-item" data-enr="${esc(s.id)}" data-paid="${esc(paid)}" data-remain="${esc(remain)}">
+      <div class="r-line"><span>صنف</span><b>${esc(className(s.classId))}</b></div>
+      <div class="r-line"><span>شعبه</span><span>${esc(classBranch(s.classId))}</span></div>
       <div class="r-line"><span>تاریخ ثبت‌نام</span><span>${toJalali(s.registerDate)}</span></div>
       <div class="r-line"><span>شهریهٔ نهایی</span><span>${afn(net)}</span></div>
       ${disc?`<div class="r-line"><span>تخفیف</span><span>${faDigits(disc)}٪</span></div>`:''}
       <div class="r-line"><span>پرداخت‌شده</span><b>${afn(paid)}</b></div>
       <div class="r-line"><span>باقیمانده</span><span>${afn(remain)}</span></div>
     </div>`;
-  }).join('<div class="r-sep"></div>') : '<div class="r-line">هنوز ثبت‌نامی انجام نشده است.</div>';
+  }).join('') : '<div class="r-item" data-enr="none" data-paid="0" data-remain="0"><div class="r-line">هنوز ثبت‌نامی انجام نشده است.</div></div>';
+  const enrOptions = `<option value="all">همهٔ ثبت‌نام‌ها</option>` + rows.map(s=>
+    `<option value="${esc(s.id)}">${esc(className(s.classId))} · ${toJalali(s.registerDate)}</option>`).join('');
 
   const win = window.open('', '_blank');
   if(!win){ alert('لطفاً اجازهٔ باز شدن پنجرهٔ چاپ را بدهید.'); return; }
   win.document.write(`<!doctype html><html dir="rtl" lang="fa"><head><meta charset="utf-8">
-  <title>رسید / پروندهٔ شاگرد · ${p.name}</title>
-  <style id="page-style">@page{ size:80mm auto; margin:0; }</style>
+  <title>رسید / پروندهٔ شاگرد · ${esc(p.name)}</title>
+  <style id="page-style"></style>
   <style>
     *{ box-sizing:border-box; }
     body{ font-family:Tahoma,Arial,sans-serif; color:#111; margin:0; padding:0; background:#fff; }
-    .toolbar{ position:sticky; top:0; background:#f3f3f6; border-bottom:1px solid #ccc; padding:10px 14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:13px; }
+    .toolbar{ position:sticky; top:0; z-index:2; background:#f3f3f6; border-bottom:1px solid #ccc; padding:10px 14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:13px; }
     .toolbar label{ color:#333; }
     .toolbar select, .toolbar button{ font-family:inherit; font-size:13px; padding:6px 10px; border:1px solid #bbb; border-radius:6px; background:#fff; cursor:pointer; }
     .toolbar button.print{ background:#4b2fd6; color:#fff; border-color:#4b2fd6; font-weight:bold; }
     .hidden{ display:none !important; }
+    .preview-note{ color:#666; font-size:11px; text-align:center; margin:10px 0 4px; }
 
-    /* ---- 80mm thermal receipt ---- */
-    .receipt{ width:72mm; margin:0 auto; padding:3mm 2mm; color:#000; font-size:12px; line-height:1.45; }
+    /* ---- 80mm thermal receipt: 72mm printable, black only ---- */
+    .receipt{ color:#000; font-size:12px; line-height:1.45; background:#fff; }
     .receipt .r-head{ text-align:center; }
     .receipt .r-head img{ width:40px; height:40px; object-fit:contain; }
     .receipt .r-head h1{ font-size:15px; margin:3px 0 0; }
-    .receipt .r-head .r-title{ font-size:12px; margin:2px 0 0; }
-    .receipt .r-sep{ border-top:1px dashed #000; margin:5px 0; }
+    .receipt .r-title{ font-size:12px; margin:2px 0 0; }
     .receipt .r-line{ display:flex; justify-content:space-between; gap:8px; }
     .receipt .r-line > span:first-child{ color:#333; }
-    .receipt .r-item{ margin:2px 0; }
     .receipt .r-tot .r-line{ font-weight:bold; font-size:12.5px; }
-    .receipt .r-foot{ text-align:center; font-size:10px; margin-top:8px; }
+    .receipt .r-foot{ text-align:center; font-size:10px; }
+    .receipt .r-sep{ border-top:1px dashed #000; margin:5px 0; }
+
+    /* vertical: a narrow slip */
+    .receipt.v{ width:72mm; margin:0 auto; padding:3mm 0; }
+    .receipt.v .r-item + .r-item{ border-top:1px dashed #000; margin-top:5px; padding-top:5px; }
+    .receipt.v .r-foot{ margin-top:8px; }
+
+    /* horizontal: 72mm tall, columns side by side, printed sideways along the roll */
+    .receipt.h{ display:flex; flex-direction:row; align-items:stretch; height:72mm; width:max-content; padding:0 3mm; margin:0 auto; border:1px dashed #bbb; }
+    .receipt.h .col{ padding:3mm 3mm; display:flex; flex-direction:column; justify-content:center; }
+    .receipt.h .col + .col{ border-right:1px dashed #000; }
+    .receipt.h .c-info{ width:58mm; }
+    .receipt.h .c-items{ flex-direction:row; justify-content:flex-start; padding:0; }
+    .receipt.h .r-item{ width:52mm; padding:3mm; display:flex; flex-direction:column; justify-content:center; }
+    .receipt.h .r-item + .r-item{ border-right:1px dashed #000; }
+    .receipt.h .c-tot{ width:46mm; }
+    .receipt.h .r-foot{ margin-top:6px; }
+    #h-wrap{ padding:8px 0; overflow-x:auto; }
 
     /* ---- Full A4/A5 sheet ---- */
     .sheet{ padding:18px 22px; max-width:900px; margin:0 auto; }
@@ -493,66 +576,100 @@ function printStudentProfile(profileId){
     table.grid tr.tot td{ background:#f4f4f8; }
     .foot{ margin-top:26px; display:flex; justify-content:space-between; font-size:12px; color:#333; }
     .foot .sign{ border-top:1px solid #999; padding-top:6px; width:200px; text-align:center; }
-    @media print{ .toolbar{ display:none; } .sheet{ max-width:none; padding:0; } }
+    @media print{
+      .toolbar, .preview-note{ display:none !important; }
+      .sheet{ max-width:none; padding:0; }
+      .receipt.h{ border:none; }
+      #h-wrap{ padding:0; overflow:visible; }
+    }
   </style></head><body>
   <div class="toolbar">
     <label>اندازهٔ کاغذ:
       <select id="sizeSel" onchange="setSize(this.value)">
-        <option value="thermal80" selected>رول ۸۰ میلی‌متری (رسید حرارتی)</option>
-        <option value="A4">A4</option>
-        <option value="A5">A5</option>
-        <option value="A3">A3</option>
-        <option value="Letter">Letter (نامه)</option>
-        <option value="Legal">Legal</option>
+        ${PRINT_SIZES.map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join('')}
       </select>
     </label>
-    <label id="orient-wrap" style="display:none;">جهت:
-      <select onchange="setOrient(this.value)">
+    <label>جهت چاپ:
+      <select id="orientSel" onchange="setOrient(this.value)">
         <option value="portrait">عمودی</option>
         <option value="landscape">افقی</option>
       </select>
     </label>
-    <button class="print" onclick="window.print()">چاپ</button>
-    <span style="color:#666; font-size:11px;">اندازهٔ چاپ را انتخاب کنید، سپس «چاپ» را بزنید. پیش‌فرض: رول ۸۰ میلی‌متری.</span>
+    <label id="enr-wrap">رسید:
+      <select id="enrSel" onchange="setEnr(this.value)">${enrOptions}</select>
+    </label>
+    <button class="print" onclick="doPrint()">چاپ</button>
+    <span style="color:#666; font-size:11px;">انتخاب اندازه و جهت برای این دستگاه به خاطر سپرده می‌شود. در پنجرهٔ چاپ مرورگر، Margins را None و Scale را Default بگذارید.</span>
   </div>
 
-  <div class="receipt" id="receipt">
-    <div class="r-head">
-      <img src="${logo}" onerror="this.style.display='none'" alt="">
-      <h1>آموزشگاه هدف</h1>
-      <div class="r-title">رسید ثبت‌نام و پرداخت</div>
+  <div id="thermal">
+    <div class="preview-note" id="h-note">پیش‌نمایش افقی — روی رول ۸۰ میلی‌متری به‌صورت چرخیده (در طول رول) چاپ می‌شود.</div>
+    <div id="v-box">
+      <div class="receipt v">
+        <div class="r-head">
+          <img src="${esc(logo)}" onerror="this.style.display='none'" alt="">
+          <h1>آموزشگاه هدف</h1>
+          <div class="r-title">رسید ثبت‌نام و پرداخت</div>
+        </div>
+        <div class="r-sep"></div>
+        <div class="r-line"><span>کد شاگرد</span><b>${esc(p.code||'-')}</b></div>
+        <div class="r-line"><span>نام شاگرد</span><b>${esc(p.name||'-')}</b></div>
+        <div class="r-line"><span>پایه/سن</span><span>${esc(p.grade||'-')}</span></div>
+        <div class="r-line"><span>سرپرست</span><span>${esc(p.guardianName||'-')}</span></div>
+        <div class="r-line"><span>تماس</span><span>${esc(p.guardianPhone||'-')}</span></div>
+        <div class="r-sep"></div>
+        <div class="items">${receiptItems}</div>
+        <div class="r-sep"></div>
+        <div class="r-tot">
+          <div class="r-line"><span>مجموع پرداخت‌شده</span><span class="t-paid"></span></div>
+          <div class="r-line"><span>مجموع باقیمانده</span><span class="t-remain"></span></div>
+        </div>
+        <div class="r-sep"></div>
+        <div class="r-foot">تاریخ چاپ: ${esc(nowJ)}<br>از اعتماد شما سپاسگزاریم — آموزشگاه هدف</div>
+      </div>
     </div>
-    <div class="r-sep"></div>
-    <div class="r-line"><span>کد شاگرد</span><b>${p.code||'-'}</b></div>
-    <div class="r-line"><span>نام شاگرد</span><b>${p.name||'-'}</b></div>
-    <div class="r-line"><span>پایه/سن</span><span>${p.grade||'-'}</span></div>
-    <div class="r-line"><span>سرپرست</span><span>${p.guardianName||'-'}</span></div>
-    <div class="r-line"><span>تماس</span><span>${p.guardianPhone||'-'}</span></div>
-    <div class="r-sep"></div>
-    ${receiptItems}
-    <div class="r-sep"></div>
-    <div class="r-tot">
-      <div class="r-line"><span>مجموع پرداخت‌شده</span><span>${afn(totPaid)}</span></div>
-      <div class="r-line"><span>مجموع باقیمانده</span><span>${afn(totRemain)}</span></div>
-    </div>
-    <div class="r-sep"></div>
-    <div class="r-foot">تاریخ چاپ: ${nowJ}<br>از اعتماد شما سپاسگزاریم — آموزشگاه هدف</div>
+    <div id="h-wrap"><div id="h-box">
+      <div class="receipt h">
+        <div class="col c-info">
+          <div class="r-head">
+            <img src="${esc(logo)}" onerror="this.style.display='none'" alt="">
+            <h1>آموزشگاه هدف</h1>
+            <div class="r-title">رسید ثبت‌نام و پرداخت</div>
+          </div>
+          <div class="r-sep"></div>
+          <div class="r-line"><span>کد شاگرد</span><b>${esc(p.code||'-')}</b></div>
+          <div class="r-line"><span>نام شاگرد</span><b>${esc(p.name||'-')}</b></div>
+          <div class="r-line"><span>پایه/سن</span><span>${esc(p.grade||'-')}</span></div>
+          <div class="r-line"><span>سرپرست</span><span>${esc(p.guardianName||'-')}</span></div>
+          <div class="r-line"><span>تماس</span><span>${esc(p.guardianPhone||'-')}</span></div>
+        </div>
+        <div class="col c-items items">${receiptItems}</div>
+        <div class="col c-tot">
+          <div class="r-tot">
+            <div class="r-line"><span>مجموع پرداخت‌شده</span><span class="t-paid"></span></div>
+            <div class="r-line"><span>مجموع باقیمانده</span><span class="t-remain"></span></div>
+          </div>
+          <div class="r-sep"></div>
+          <div class="r-foot">تاریخ چاپ: ${esc(nowJ)}<br>از اعتماد شما سپاسگزاریم<br>آموزشگاه هدف</div>
+        </div>
+      </div>
+    </div></div>
   </div>
 
   <div class="sheet hidden" id="sheet">
     <div class="head">
       <div class="inst">
-        <img class="logo" src="${logo}" onerror="this.style.display='none'" alt="">
+        <img class="logo" src="${esc(logo)}" onerror="this.style.display='none'" alt="">
         <div><h1>آموزشگاه هدف</h1><div style="font-size:11px;color:#666;">پروندهٔ شاگرد</div></div>
       </div>
-      <div class="meta">تاریخ چاپ: ${nowJ}<br>کد شاگرد: <b>${p.code||'-'}</b></div>
+      <div class="meta">تاریخ چاپ: ${esc(nowJ)}<br>کد شاگرد: <b>${esc(p.code||'-')}</b></div>
     </div>
     <div class="info">
       ${photo}
       <table>
-        <tr><td class="k">نام شاگرد:</td><td><b>${p.name||'-'}</b></td><td class="k">پایه/سن:</td><td>${p.grade||'-'}</td></tr>
-        <tr><td class="k">نام سرپرست:</td><td>${p.guardianName||'-'}</td><td class="k">تماس سرپرست:</td><td>${p.guardianPhone||'-'}</td></tr>
-        <tr><td class="k">تعداد ثبت‌نام‌ها:</td><td>${faDigits(rows.length)}</td><td class="k">توضیحات:</td><td>${p.note||'-'}</td></tr>
+        <tr><td class="k">نام شاگرد:</td><td><b>${esc(p.name||'-')}</b></td><td class="k">پایه/سن:</td><td>${esc(p.grade||'-')}</td></tr>
+        <tr><td class="k">نام سرپرست:</td><td>${esc(p.guardianName||'-')}</td><td class="k">تماس سرپرست:</td><td>${esc(p.guardianPhone||'-')}</td></tr>
+        <tr><td class="k">تعداد ثبت‌نام‌ها:</td><td>${faDigits(rows.length)}</td><td class="k">توضیحات:</td><td>${esc(p.note||'-')}</td></tr>
       </table>
     </div>
     <h2 class="section">سابقهٔ صنف‌ها و شهریه</h2>
@@ -570,22 +687,62 @@ function printStudentProfile(profileId){
   </div>
 
   <script>
-    var _size='thermal80', _orient='portrait';
-    function _apply(){
-      var st=document.getElementById('page-style');
-      if(_size==='thermal80'){ st.textContent='@page{ size:80mm auto; margin:0; }'; }
-      else { st.textContent='@page{ size:'+_size+' '+_orient+'; margin:12mm; }'; }
-    }
-    function setSize(v){
-      _size=v;
-      var thermal=(v==='thermal80');
-      document.getElementById('receipt').classList.toggle('hidden', !thermal);
+    var MM = 25.4/96; // CSS px -> mm
+    var S = { size: ${JSON.stringify(prefs.size)}, orient: ${JSON.stringify(prefs.orient)}, enr: ${JSON.stringify(selected)} };
+    function fa(n){ n=Math.round(Number(n)||0); var neg=n<0; var g=Math.abs(n).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ','); return ((neg?'-':'')+g).replace(/\\d/g, function(d){ return '۰۱۲۳۴۵۶۷۸۹'[d]; }) + ' افغانی'; }
+    function savePrefs(){ try{ var o=window.opener; if(o && o.setPrintPrefs) o.setPrintPrefs({ size:S.size, orient:S.orient }); }catch(e){} }
+    function apply(){
+      var thermal = S.size==='thermal80', horiz = S.orient==='landscape';
+      document.getElementById('sizeSel').value = S.size;
+      document.getElementById('orientSel').value = S.orient;
+      document.getElementById('enrSel').value = S.enr;
+      document.getElementById('enr-wrap').style.display = thermal ? '' : 'none';
+      document.getElementById('thermal').classList.toggle('hidden', !thermal);
       document.getElementById('sheet').classList.toggle('hidden', thermal);
-      document.getElementById('orient-wrap').style.display = thermal ? 'none' : 'inline';
-      _apply();
+      document.getElementById('v-box').classList.toggle('hidden', horiz);
+      document.getElementById('h-wrap').classList.toggle('hidden', !horiz);
+      document.getElementById('h-note').classList.toggle('hidden', !horiz);
+      // Show only the chosen registration(s) and total them.
+      var paid=0, remain=0;
+      Array.prototype.forEach.call(document.querySelectorAll('.r-item'), function(el){
+        var on = S.enr==='all' || el.getAttribute('data-enr')===S.enr;
+        el.classList.toggle('hidden', !on);
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('#v-box .r-item'), function(el){
+        if(!el.classList.contains('hidden')){ paid+=Number(el.getAttribute('data-paid'))||0; remain+=Number(el.getAttribute('data-remain'))||0; }
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.t-paid'), function(el){ el.textContent = fa(paid); });
+      Array.prototype.forEach.call(document.querySelectorAll('.t-remain'), function(el){ el.textContent = fa(remain); });
+      pageSize();
     }
-    function setOrient(v){ _orient=v; _apply(); }
-    _apply();
+    /* Exact page size so the browser doesn't fall back to A4/Letter and shrink
+       the receipt: width = the 80mm roll, height = the receipt's own length. */
+    function pageSize(){
+      var st = document.getElementById('page-style');
+      if(S.size!=='thermal80'){
+        st.textContent = '@page{ size:'+S.size+' '+S.orient+'; margin:12mm; }';
+        return;
+      }
+      if(S.orient==='portrait'){
+        var h = Math.ceil(document.querySelector('#v-box .receipt').offsetHeight*MM) + 4;
+        st.textContent = '@page{ size:80mm '+h+'mm; margin:0; }';
+        return;
+      }
+      // Horizontal: the 72mm-tall layout is turned 90° so its length runs along the roll,
+      // with the header/student details coming out of the printer first.
+      // offsetWidth ignores the rotation, so this also works while already printing.
+      var w = document.querySelector('#h-box .receipt').offsetWidth;
+      var len = Math.ceil(w*MM) + 6;
+      st.textContent = '@page{ size:80mm '+len+'mm; margin:0; }' +
+        '@media print{ #h-box{ position:absolute; top:'+(Math.ceil(w*MM)+3)+'mm; left:4mm; width:'+Math.ceil(w*MM)+'mm; transform-origin:top left; transform:rotate(-90deg); } }';
+    }
+    function setSize(v){ S.size=v; savePrefs(); apply(); }
+    function setOrient(v){ S.orient=v; savePrefs(); apply(); }
+    function setEnr(v){ S.enr=v; apply(); }
+    function doPrint(){ pageSize(); window.print(); }
+    window.addEventListener('beforeprint', pageSize);
+    apply();
+    window.addEventListener('load', pageSize);
   <\/script>
   </body></html>`);
   win.document.close();

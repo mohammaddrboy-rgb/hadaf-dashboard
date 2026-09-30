@@ -99,6 +99,16 @@ const VIEW_TITLES = {
 
 /* ---------------- Storage ---------------- */
 const STORE_KEY = 'hadaf_dashboard_v1';
+/* Placeholder the server sends instead of real passwords to everyone except
+   shareholders (must match HIDDEN_PASSWORD in server/server.js). */
+const HIDDEN_PASSWORD = '__hidden__';
+/* Save the working copy in this browser. Returns false when the browser
+   refuses (storage full), so callers can warn. A student's trimmed copy of
+   the data is never cached. */
+function persistLocal(){
+  if(db && db.__view) return true;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); return true; } catch(e) { return false; }
+}
 let db = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
 if(!db){
   db = window.HADAF_SEED;
@@ -114,9 +124,10 @@ if(!db.discountCodesSeeded){
     db.discountCodes = window.HADAF_SEED.discountCodes.map(c=>Object.assign({}, c));
   }
   db.discountCodesSeeded = true;
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e) {}
+  persistLocal();
 }
 function migrateLegacyData(){
+  if(db.__view) return; // trimmed per-user copy from the server (student): nothing to migrate
   let changed = false;
   db.teachers.forEach(t=>{
     if(!t.role){ t.role='مدرس'; changed=true; }
@@ -126,6 +137,10 @@ function migrateLegacyData(){
     if(t.contractStart===undefined){ t.contractStart = t.createdAt||''; changed=true; }
     if(t.contractEnd===undefined){ t.contractEnd=''; changed=true; }
     if(t.canRequestAdvance===undefined){ t.canRequestAdvance=false; changed=true; }
+    // Hourly pay was first stored as «ثابت ماهانه + اضافه‌کاری ساعتی» with its own
+    // overtime rate; the rate is now always monthly salary / agreed daily hours.
+    if(t.payType==='ثابت ماهانه + اضافه‌کاری ساعتی'){ t.payType='ساعتی'; changed=true; }
+    if(t.overtimeRate!==undefined){ delete t.overtimeRate; changed=true; }
     if(!t.password){ t.password = generateUniquePassword(); changed=true; migrationGeneratedPasswords.push({name:t.name, code:t.code, role:t.role, password:t.password}); }
   });
   db.students.forEach(s=>{
@@ -151,6 +166,10 @@ function migrateLegacyData(){
     if(s.schoolCodeDiscountPercent===undefined){ s.schoolCodeDiscountPercent=0; changed=true; }
     if(s.schoolCode===undefined){ s.schoolCode=''; changed=true; }
     if(s.referredBy===undefined){ s.referredBy=''; changed=true; }
+  });
+  db.classes.forEach(c=>{
+    // «inside agreed hours» option was removed: every two-teacher class counts as half.
+    if('teacher1InHours' in c || 'teacher2InHours' in c){ delete c.teacher1InHours; delete c.teacher2InHours; changed=true; }
   });
   db.studentProfiles.forEach(p=>{
     if(p.familyId===undefined){ p.familyId=''; changed=true; }
@@ -196,12 +215,6 @@ function migrateLegacyData(){
     db.shareholderRestructure2026 = true;
     changed = true;
   }
-  // Set Mushtaq Mirzayi's login password to the value chosen by the owner
-  if(!db.mushtaqPasswordSet){
-    const mushtaq = db.shareholders.find(s=> s.name==='مشتاق میرزایی');
-    if(mushtaq){ mushtaq.password = '084597'; changed = true; }
-    db.mushtaqPasswordSet = true;
-  }
   if(!db.bookPurchases.length){
     const samples = [
       { title:'General English Coursebook 1', source:'مطبعهٔ آریانا', branch:BRANCHES[0], quantity:30, unitCost:250, paidRatio:1 },
@@ -221,11 +234,19 @@ function migrateLegacyData(){
     });
     changed = true;
   }
-  if(changed){ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
+  if(changed) persistLocal();
 }
 let migrationGeneratedPasswords = [];
 migrateLegacyData();
-function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }catch(e){} if(typeof scheduleServerPush==='function') scheduleServerPush(); renderAll(); }
+let storageWarned = false;
+function save(){
+  if(!persistLocal() && !storageWarned){
+    storageWarned = true;
+    alert('حافظهٔ این مرورگر پر است و تغییرات فقط روی سرور ذخیره می‌شوند. اگر اتصال به سرور برقرار نیست، قبل از بستن صفحه از «تنظیمات» نسخهٔ پشتیبان بگیرید. (معمولاً عکس‌های حجیم باعث این مشکل می‌شوند.)');
+  }
+  if(typeof scheduleServerPush==='function') scheduleServerPush();
+  renderAll();
+}
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 /* ---------------- Backup / Restore ---------------- */
@@ -257,6 +278,13 @@ function importBackup(input){
 }
 
 /* ---------------- Helpers ---------------- */
+/* Escape a value for HTML text/attribute context. Every piece of stored data
+   rendered through innerHTML / document.write must go through this, otherwise a
+   name or note like `<img onerror=…>` would run as code for whoever views it. */
+function esc(v){ return String(v).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* Escape a value placed inside a single-quoted JS string within an inline
+   handler attribute, e.g. onclick="f('${escJs(id)}')". */
+function escJs(v){ return esc(String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n')); }
 function numFmt(n){
   n = Math.round(Number(n)||0);
   const neg = n<0; n = Math.abs(n);
@@ -301,9 +329,9 @@ function renderPaginationControls(containerId, key, totalPages, renderFnName){
   if(totalPages<=1){ el.innerHTML=''; return; }
   const page = paginationState[key]||1;
   el.innerHTML = `
-    <button class="btn ghost small" ${page<=1?'disabled':''} onclick="changePage('${key}',${page-1},'${renderFnName}')">‹ قبلی</button>
+    <button class="btn ghost small" ${page<=1?'disabled':''} onclick="changePage('${escJs(key)}',${page-1},'${escJs(renderFnName)}')">‹ قبلی</button>
     <span class="pagination-info">صفحهٔ ${faDigits(page)} از ${faDigits(totalPages)}</span>
-    <button class="btn ghost small" ${page>=totalPages?'disabled':''} onclick="changePage('${key}',${page+1},'${renderFnName}')">بعدی ›</button>
+    <button class="btn ghost small" ${page>=totalPages?'disabled':''} onclick="changePage('${escJs(key)}',${page+1},'${escJs(renderFnName)}')">بعدی ›</button>
   `;
 }
 function changePage(key, newPage, renderFnName){
@@ -349,19 +377,27 @@ function toJalali(gregStr){
 }
 function jalaliPicker(idPrefix, gregStr){
   const [jy,jm,jd] = g2jParts(gregStr || todayISO());
-  let dayOpts=''; for(let d=1; d<=31; d++) dayOpts += `<option value="${d}" ${d===jd?'selected':''}>${faDigits(d)}</option>`;
-  let monthOpts = AFG_MONTHS.map((m,i)=>`<option value="${i+1}" ${i+1===jm?'selected':''}>${m}</option>`).join('');
-  let yearOpts=''; for(let y=jy-5; y<=jy+5; y++) yearOpts += `<option value="${y}" ${y===jy?'selected':''}>${faDigits(y)}</option>`;
-  return `<div style="display:grid; grid-template-columns:0.8fr 1.4fr 1fr; gap:6px;" id="${idPrefix}-wrap">
-    <select id="${idPrefix}-d">${dayOpts}</select>
-    <select id="${idPrefix}-m">${monthOpts}</select>
-    <select id="${idPrefix}-y">${yearOpts}</select>
+  let dayOpts=''; for(let d=1; d<=31; d++) dayOpts += `<option value="${esc(d)}" ${d===jd?'selected':''}>${faDigits(d)}</option>`;
+  let monthOpts = AFG_MONTHS.map((m,i)=>`<option value="${esc(i+1)}" ${i+1===jm?'selected':''}>${esc(m)}</option>`).join('');
+  let yearOpts=''; for(let y=jy-5; y<=jy+5; y++) yearOpts += `<option value="${esc(y)}" ${y===jy?'selected':''}>${faDigits(y)}</option>`;
+  return `<div style="display:grid; grid-template-columns:0.8fr 1.4fr 1fr; gap:6px;" id="${esc(idPrefix)}-wrap">
+    <select id="${esc(idPrefix)}-d">${dayOpts}</select>
+    <select id="${esc(idPrefix)}-m">${monthOpts}</select>
+    <select id="${esc(idPrefix)}-y">${yearOpts}</select>
   </div>`;
 }
 function jalaliPickerValue(idPrefix){
   const y = document.getElementById(idPrefix+'-y'), m = document.getElementById(idPrefix+'-m'), d = document.getElementById(idPrefix+'-d');
   if(!y||!m||!d) return todayISO();
-  return j2gISO(y.value, m.value, d.value);
+  // The day list always offers 1–31; clamp so e.g. «۳۱ میزان» doesn't silently become 1 Aqrab.
+  const day = Math.min(Number(d.value), jalaliMonthLength(Number(y.value), Number(m.value)));
+  return j2gISO(y.value, m.value, day);
+}
+function jalaliMonthLength(jy, jm){
+  if(jm<=6) return 31;
+  if(jm<=11) return 30;
+  const p = g2jParts(j2gISO(jy, 12, 30)); // 30 Hut only exists in leap years
+  return (p[0]===jy && p[1]===12) ? 30 : 29;
 }
 
 /* ---------------- Unique ID codes ---------------- */
@@ -426,11 +462,30 @@ function regenerateShareholderPassword(shId){
   save();
   openShareholderProfileModal(shId);
 }
+/* Photos are stored inside the data (this browser's storage + the shared
+   server), so shrink them first: max 800px on the long side, JPEG. A phone
+   photo goes from several MB to roughly 50–150 KB. */
+const PHOTO_MAX_SIDE = 800;
 function readImageAsDataURL(inputEl, onDone){
   const file = inputEl.files && inputEl.files[0]; if(!file) return;
-  if(file.size > 4*1024*1024){ alert('حجم فایل زیاد است؛ لطفاً عکسی کوچک‌تر از ۴ مگابایت انتخاب کنید.'); return; }
+  if(!/^image\//.test(file.type||'')){ alert('لطفاً یک فایل عکس انتخاب کنید.'); return; }
+  if(file.size > 25*1024*1024){ alert('حجم فایل زیاد است؛ لطفاً عکسی کوچک‌تر از ۲۵ مگابایت انتخاب کنید.'); return; }
   const reader = new FileReader();
-  reader.onload = ()=> onDone(reader.result);
+  reader.onload = ()=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth*scale)), h = Math.max(1, Math.round(img.naturalHeight*scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); // transparent PNGs get a white background in JPEG
+      ctx.drawImage(img, 0, 0, w, h);
+      onDone(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = ()=> alert('این فایل عکس قابل خواندن نیست.');
+    img.src = reader.result;
+  };
   reader.readAsDataURL(file);
 }
 
@@ -469,13 +524,15 @@ function showAccessGate(){
 function hideAccessGate(){
   document.getElementById('access-gate').classList.remove('active');
 }
+/* Login. When the shared server is reachable the password is checked there
+   (and it hands back the session token that all data requests need); only when
+   no server answers — e.g. the files are opened with a plain static server —
+   do we fall back to checking against this browser's own copy of the data. */
 function attemptLogin(role){
   const errEl = document.getElementById('gate-error-' + role);
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
   const pinInput = document.getElementById('gate-pin-' + role);
   const pin = pinInput ? pinInput.value.trim() : '';
-  let actorName = '';
-  let realPassword = '';
 
   const showError = (msg) => {
     if (errEl) {
@@ -484,65 +541,60 @@ function attemptLogin(role){
     }
   };
 
-  if(role==='teacher'){
-    const sel = document.getElementById('gate-teacher-select');
-    const tid = sel ? sel.value : '';
-    if(!tid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
-    const t = db.teachers.find(x=>x.id===tid);
-    if(!t) return;
-    realPassword = t.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    currentTeacherId = tid;
-    sessionStorage.setItem('hadaf_teacher_id', tid);
-    actorName = t.name;
-  } else if(role==='shareholder'){
-    const sel = document.getElementById('gate-shareholder-select');
-    const shid = sel ? sel.value : '';
-    if(!shid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
-    const sh = db.shareholders.find(x=>x.id===shid);
-    if(!sh) return;
-    realPassword = sh.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    actorName = sh.name;
-  } else if(role==='manager'){
-    const sel = document.getElementById('gate-manager-select');
-    const mid = sel ? sel.value : '';
-    if(!mid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
-    const m = db.teachers.find(x=>x.id===mid);
-    if(!m) return;
-    realPassword = m.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    currentTeacherId = mid;
-    sessionStorage.setItem('hadaf_teacher_id', mid);
-    actorName = m.name;
-  } else if(role==='employee'){
-    const sel = document.getElementById('gate-employee-select');
-    const eid = sel ? sel.value : '';
-    if(!eid){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
-    const e = db.teachers.find(x=>x.id===eid);
-    if(!e) return;
-    realPassword = e.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    currentTeacherId = eid;
-    sessionStorage.setItem('hadaf_teacher_id', eid);
-    actorName = e.name;
-  } else if(role==='student'){
+  let ident = '';
+  if(role==='student'){
     const codeEl = document.getElementById('gate-student-code');
-    const code = codeEl ? codeEl.value.trim() : '';
-    if(!code){ showError('کد شاگرد (نام کاربری) را وارد کنید.'); return; }
-    const prof = db.studentProfiles.find(p=> (p.code||'').toLowerCase()===code.toLowerCase());
-    if(!prof){ showError('کد شاگرد یافت نشد.'); return; }
-    realPassword = prof.password || '';
-    if(pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
-    currentStudentId = prof.id;
-    sessionStorage.setItem('hadaf_student_id', prof.id);
-    actorName = prof.name;
+    ident = codeEl ? codeEl.value.trim() : '';
+    if(!ident){ showError('کد شاگرد (نام کاربری) را وارد کنید.'); return; }
+  } else {
+    const sel = document.getElementById('gate-' + role + '-select');
+    ident = sel ? sel.value : '';
+    if(!ident){ showError('لطفاً نام خود را انتخاب کنید.'); return; }
+  }
+  if(!pin){ showError('رمز عبور را وارد کنید.'); return; }
+
+  const localLogin = () => {
+    let actor = null;
+    if(role==='student'){
+      actor = db.studentProfiles.find(p=> (p.code||'').toLowerCase()===ident.toLowerCase());
+      if(!actor){ showError('کد شاگرد یافت نشد.'); return; }
+    } else if(role==='shareholder'){
+      actor = db.shareholders.find(x=>x.id===ident);
+    } else {
+      actor = db.teachers.find(x=>x.id===ident);
+    }
+    if(!actor){ showError('این نام در داده‌های این مرورگر یافت نشد؛ اتصال به سرور برقرار نیست.'); return; }
+    const realPassword = actor.password || '';
+    if(realPassword===HIDDEN_PASSWORD){ showError('اتصال به سرور برقرار نیست؛ ورود فعلاً ممکن نیست. کمی بعد دوباره امتحان کنید.'); return; }
+    if(!realPassword || pin !== realPassword){ showError('رمز عبور واردشده نادرست است.'); return; }
+    completeLogin(role, actor.id, actor.name);
+  };
+
+  if(typeof hadafServerLogin !== 'function'){ localLogin(); return; }
+  const btns = document.querySelectorAll('#gate-role-' + role + ' button');
+  btns.forEach(b=>b.disabled=true);
+  hadafServerLogin(role, ident, pin).then(r=>{
+    btns.forEach(b=>b.disabled=false);
+    if(r.ok) completeLogin(role, r.actorId, r.actorName);
+    else if(r.error==='bad') showError(role==='student' ? 'کد شاگرد یا رمز عبور نادرست است.' : 'رمز عبور واردشده نادرست است.');
+    else if(r.error==='rate') showError('تلاش‌های ناموفق زیاد بود؛ لطفاً ۱۵ دقیقه بعد دوباره امتحان کنید.');
+    else localLogin(); // no server (or server has no data yet)
+  });
+}
+
+function completeLogin(role, actorId, actorName){
+  if(role==='student'){
+    currentStudentId = actorId;
+    sessionStorage.setItem('hadaf_student_id', actorId);
+  } else if(role!=='shareholder'){
+    currentTeacherId = actorId;
+    sessionStorage.setItem('hadaf_teacher_id', actorId);
   }
   currentRole = role;
   currentActorName = actorName;
   sessionStorage.setItem('hadaf_role', role);
   sessionStorage.setItem('hadaf_actor_name', actorName);
-  logAction('ورود', 'نشست', `${ROLE_LABELS[role]} · ${actorName}`);
+  document.querySelectorAll('#access-gate input[type="password"]').forEach(i=>i.value='');
   hideAccessGate();
   applyRoleVisibility();
 
@@ -551,113 +603,29 @@ function attemptLogin(role){
   const defaultView = role==='teacher' ? 'classes' : role==='employee' ? 'students' : role==='student' ? 'studentSelf' : 'dashboard';
   const targetView = (hash && VIEW_TITLES[hash] && navAllowed(hash)) ? hash : defaultView;
   switchView(targetView, true);
+
+  const logIt = () => {
+    if(role==='student') return; // students have read-only access
+    logAction('ورود', 'نشست', `${ROLE_LABELS[role]} · ${actorName}`);
+    save();
+  };
+  // Load the shared data for this user first, then record the login on top of it.
+  if(typeof hadafAfterLogin === 'function') hadafAfterLogin().then(logIt); else logIt();
 }
 
-function logoutRole(){
-  if(currentRole) logAction('خروج', 'نشست', `${ROLE_LABELS[currentRole]} · ${currentActorName}`);
+function logoutRole(silent){
+  const role = currentRole;
+  if(role && role!=='student' && !silent){ logAction('خروج', 'نشست', `${ROLE_LABELS[role]} · ${currentActorName}`); save(); }
   sessionStorage.removeItem('hadaf_role'); sessionStorage.removeItem('hadaf_teacher_id'); sessionStorage.removeItem('hadaf_student_id'); sessionStorage.removeItem('hadaf_actor_name');
   currentRole=''; currentTeacherId=''; currentStudentId=''; currentActorName='';
   showAccessGate();
-  renderQuickLoginCards();
-  renderGateAllPasswords();
+  const done = () => {
+    // A student's session only held a trimmed copy of the data; start clean.
+    if(db && db.__view) location.reload();
+  };
+  if(typeof hadafServerLogout === 'function') hadafServerLogout().then(done); else done();
 }
 
-function renderQuickLoginCards() {
-  const container = document.getElementById('gate-quick-list');
-  if (!container) return;
-  const cards = [];
-
-  const sh = db.shareholders && db.shareholders[0];
-  if (sh) {
-    cards.push(`
-      <div class="quick-login-card">
-        <div class="quick-login-info">
-          <b>${sh.name}</b>
-          <span class="quick-login-code">سهامدار اصلی · رمز: <code>${sh.password || '4545'}</code></span>
-        </div>
-        <button type="button" class="btn small" onclick="quickLoginAs('shareholder', '${sh.id}', '${sh.password || '4545'}')">ورود آزمایشی</button>
-      </div>
-    `);
-  }
-
-  const mgr = db.teachers && db.teachers.find(t => t.role === 'مدیریت');
-  if (mgr) {
-    cards.push(`
-      <div class="quick-login-card">
-        <div class="quick-login-info">
-          <b>${mgr.name}</b>
-          <span class="quick-login-code">مدیر شعبه · رمز: <code>${mgr.password || '2026'}</code></span>
-        </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('manager', '${mgr.id}', '${mgr.password || '2026'}')">ورود آزمایشی</button>
-      </div>
-    `);
-  }
-
-  const tchr = db.teachers && db.teachers.find(t => t.role === 'مدرس');
-  if (tchr) {
-    cards.push(`
-      <div class="quick-login-card">
-        <div class="quick-login-info">
-          <b>${tchr.name}</b>
-          <span class="quick-login-code">مدرس · رمز: <code>${tchr.password || '1010'}</code></span>
-        </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('teacher', '${tchr.id}', '${tchr.password || '1010'}')">ورود آزمایشی</button>
-      </div>
-    `);
-  }
-
-  const emp = db.teachers && db.teachers.find(t => t.role === 'کارمند');
-  if (emp) {
-    cards.push(`
-      <div class="quick-login-card">
-        <div class="quick-login-info">
-          <b>${emp.name}</b>
-          <span class="quick-login-code">کارمند پذیرش · رمز: <code>${emp.password || '1234'}</code></span>
-        </div>
-        <button type="button" class="btn small secondary" onclick="quickLoginAs('employee', '${emp.id}', '${emp.password || '1234'}')">ورود آزمایشی</button>
-      </div>
-    `);
-  }
-
-  container.innerHTML = cards.join('');
-}
-
-function toggleGateDemoLogins() {
-  const box = document.getElementById('gate-quick-list');
-  const chevron = document.getElementById('gate-quick-chevron');
-  if (!box) return;
-  const isHidden = box.style.display === 'none';
-  box.style.display = isHidden ? 'grid' : 'none';
-  if (chevron) chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-  if (isHidden) renderQuickLoginCards();
-}
-
-function quickLoginAs(role, id, password) {
-  switchGateTab(role);
-  const sel = document.getElementById('gate-' + role + '-select');
-  if (sel) sel.value = id;
-  const pinInput = document.getElementById('gate-pin-' + role);
-  if (pinInput) pinInput.value = password;
-  attemptLogin(role);
-}
-
-function renderGateAllPasswords(){
-  const box = document.getElementById('gate-all-passwords');
-  if(!box) return;
-  const rows = [
-    ...db.shareholders.map(sh=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${sh.name}</b> <small style="color:var(--text-dim);">(سهامدار · ${sh.code||'-'})</small></span> <code class="code-badge" style="cursor:default;">${sh.password||'-'}</code></div>`),
-    ...db.teachers.map(t=>`<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span><b>${t.name}</b> <small style="color:var(--text-dim);">(${t.role||'مدرس'} · ${t.code||'-'})</small></span> <code class="code-badge" style="cursor:default;">${t.password||'-'}</code></div>`),
-  ];
-  box.innerHTML = rows.length ? rows.join('') : '<div style="color:var(--text-dim); text-align:center;">هنوز کاربری ثبت نشده است.</div>';
-}
-
-function toggleGateAllPasswords(){
-  const box = document.getElementById('gate-all-passwords');
-  if(!box) return;
-  const show = box.style.display==='none';
-  box.style.display = show ? 'block' : 'none';
-  if(show) renderGateAllPasswords();
-}
 function logAction(action, entityType, label){
   if(!db.activityLog) db.activityLog = [];
   db.activityLog.unshift({
@@ -763,41 +731,59 @@ function seminarLocationOptionsHtml(selected){
 }
 
 /* ---------------- Timeframes & Excel export ---------------- */
+/* Report periods follow the Afghan (Solar Hijri) calendar: "this month" is
+   from the 1st of the current Hijri month (e.g. 1 Mizan) to today, seasons are
+   Hamal–Jawza, Saratan–Sonbola, Mizan–Qaws, Jadi–Hoot, the year starts 1 Hamal,
+   and the week starts on Saturday. Labels are getters so they name the month. */
+const SEASON_NAMES = ['بهار','تابستان','پاییز','زمستان'];
+function prevJalaliMonth(y, m){ return m>1 ? {y, m:m-1} : {y:y-1, m:12}; }
 const TIMEFRAMES = [
   {key:'all', label:'همه'},
-  {key:'daily', label:'روزانه'},
-  {key:'weekly', label:'هفتگی'},
-  {key:'monthly', label:'ماهانه'},
-  {key:'quarterly', label:'فصلی'},
-  {key:'biannual', label:'شش‌ماهه'},
-  {key:'annual', label:'سالانه'},
+  {key:'daily', label:'امروز'},
+  {key:'weekly', label:'این هفته (از شنبه)'},
+  {key:'monthly', get label(){ const [,m]=g2jParts(todayISO()); return `این ماه (${AFG_MONTHS[m-1]})`; }},
+  {key:'prevMonth', get label(){ const [y,m]=g2jParts(todayISO()); const p=prevJalaliMonth(y,m); return `ماه گذشته (${AFG_MONTHS[p.m-1]})`; }},
+  {key:'quarterly', get label(){ const [,m]=g2jParts(todayISO()); return `این فصل (${SEASON_NAMES[Math.floor((m-1)/3)]})`; }},
+  {key:'biannual', get label(){ const [,m]=g2jParts(todayISO()); return m<=6 ? 'این نیم‌سال (حمل تا سنبله)' : 'این نیم‌سال (میزان تا حوت)'; }},
+  {key:'annual', get label(){ const [y]=g2jParts(todayISO()); return `امسال (${faDigits(y)})`; }},
 ];
-function getRangeStart(key){
-  const now = new Date(); const start = new Date(now);
+function timeframeLabel(key){ const t = TIMEFRAMES.find(x=>x.key===key); return t ? t.label : key; }
+/* { start, end } as YYYY-MM-DD (inclusive), or null for "all". */
+function getRange(key){
+  const today = todayISO();
+  const [jy, jm] = g2jParts(today);
   switch(key){
-    case 'daily': start.setHours(0,0,0,0); return start;
-    case 'weekly': start.setDate(now.getDate()-7); return start;
-    case 'monthly': start.setMonth(now.getMonth()-1); return start;
-    case 'quarterly': start.setMonth(now.getMonth()-3); return start;
-    case 'biannual': start.setMonth(now.getMonth()-6); return start;
-    case 'annual': start.setFullYear(now.getFullYear()-1); return start;
+    case 'daily': return { start: today, end: today };
+    case 'weekly': {
+      const d = new Date(today+'T00:00:00');
+      d.setDate(d.getDate() - (d.getDay()+1)%7); // back to Saturday
+      return { start: dateToISO(d), end: today };
+    }
+    case 'monthly': return { start: j2gISO(jy, jm, 1), end: today };
+    case 'prevMonth': {
+      const p = prevJalaliMonth(jy, jm);
+      const end = new Date(j2gISO(jy, jm, 1)+'T00:00:00'); end.setDate(end.getDate()-1);
+      return { start: j2gISO(p.y, p.m, 1), end: dateToISO(end) };
+    }
+    case 'quarterly': return { start: j2gISO(jy, Math.floor((jm-1)/3)*3+1, 1), end: today };
+    case 'biannual': return { start: j2gISO(jy, jm<=6 ? 1 : 7, 1), end: today };
+    case 'annual': return { start: j2gISO(jy, 1, 1), end: today };
     default: return null;
   }
 }
 function inTimeframe(dateStr, key){
-  const start = getRangeStart(key);
-  if(!start) return true;
+  const r = getRange(key);
+  if(!r) return true;
   if(!dateStr) return false;
-  const d = new Date(dateStr+'T00:00:00');
-  return d>=start && d<=new Date();
+  return dateStr>=r.start && dateStr<=r.end;
 }
 function filterByDate(list, field, key){
   if(key==='all'||!key) return list;
   return list.filter(item=>inTimeframe(item[field], key));
 }
 function exportControlHtml(category){
-  return `<select id="exp-${category}-tf">${TIMEFRAMES.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select>
-    <button class="btn ghost small" onclick="exportCategoryExcel('${category}')">خروجی اکسل</button>`;
+  return `<select id="exp-${esc(category)}-tf">${TIMEFRAMES.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')}</select>
+    <button class="btn ghost small" onclick="exportCategoryExcel('${escJs(category)}')">خروجی اکسل</button>`;
 }
 function downloadWorkbookFromRows(rowsByCategory, filenamePrefix){
   if(typeof XLSX==='undefined'){ alert('کتابخانهٔ اکسل بارگذاری نشد. اتصال اینترنت را بررسی کنید.'); return; }
@@ -810,8 +796,8 @@ function downloadWorkbookFromRows(rowsByCategory, filenamePrefix){
 }
 function classesToRows(list){
   return list.map(c=>({
-    'نام صنف': c.name||c.category, 'شعبه': c.branch||'', 'دسته': c.category, 'مدرس': teacherName(c.teacherId),
-    'شیوه': c.mode||'', 'ساعت': classTimeLabel(c), 'تاریخ آغاز': toJalali(c.startDate), 'تاریخ پایان': c.endDate?toJalali(c.endDate):'نامشخص',
+    'نام صنف': c.name||c.category, 'شعبه': c.branch||'', 'دسته': c.category, 'مدرس': classTeachersLabel(c), 'دو مدرسه': isSharedClass(c) ? 'بله' : '',
+    'شیوه': c.mode||'', 'ساعت': classTimeLabel(c), 'تاریخ آغاز': toJalali(c.startDate), 'تاریخ پایان': toJalali(classEndDate(c)), 'تعداد جلسات': classSessionDates(c).length,
     'ظرفیت': c.capacity||'', 'تعداد ثبت‌نامی': classEnrolledCount(c.id), 'وضعیت': classStatus(c),
     'پیشرفت (%)': c.progress||0, 'مکان': c.location||'', 'توضیحات': c.note||'',
   }));
@@ -832,15 +818,18 @@ function studentsToRows(list){
   }));
 }
 function teachersToRows(list){
-  const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
+  const { y, m } = currentSalaryPeriod();
   return list.map(t=>{
     const classes = teacherClassesList(t.id);
     const pf = teacherPassFailStats(t.id);
     return { 'کد': t.code||'', 'نام': t.name, 'نقش': t.role||'', 'شماره تماس': t.phone||'', 'مضامین': t.subjects||'',
       'آغاز قرارداد': t.contractStart?toJalali(t.contractStart):'', 'پایان قرارداد': t.contractEnd?toJalali(t.contractEnd):'نامشخص',
-      'نوع پرداخت': t.payType||'', 'مبلغ (افغانی)': t.payAmount||0,
+      'نوع پرداخت': payTypeLabel(t), 'مبلغ (افغانی)': t.payAmount||0,
+      'ساعات توافق‌شده در روز': t.payType===PAY_HOURLY ? (t.dailyHours||0) : '', 'نرخ هر ساعت (افغانی)': t.payType===PAY_HOURLY ? teacherHourlyRate(t) : '',
+      'درصد شهریه': t.payType===PAY_FIXED_PCT ? (t.payPercent||0) : '',
+      'ساعات اضافهٔ این ماه': t.payType===PAY_HOURLY ? teacherOvertimeInMonth(t,y,m).hours : '',
       'تعداد صنف‌ها': classes.length, 'صنف‌های تدریسی': classes.map(c=>c.name||c.category).join('، ')||'-',
-      'صنف‌های این ماه': t.payType==='ماهانه ثابت' ? '' : teacherClassCountInMonth(t.id,y,m),
+      'صنف‌های این ماه': t.payType===PAY_PER_CLASS ? teacherClassCountInMonth(t.id,y,m) : '',
       'حقوق ناخالص این ماه (افغانی)': teacherGrossSalary(t,y,m), 'مانده پیش‌پرداخت (افغانی)': teacherAdvanceBalance(t.id),
       'خالص قابل پرداخت این ماه (افغانی)': teacherNetSalary(t,y,m),
       'نرخ کامیابی (٪)': pf.rate===null?'': pf.rate, 'توضیحات': t.note||'' };
@@ -866,7 +855,7 @@ function expensesToRows(list){
 function projectsToRows(list){
   return list.map(p=>({
     'نام پروژه': p.name, 'دسته': p.category, 'مسئول': p.lead||'', 'تاریخ آغاز': toJalali(p.startDate),
-    'تاریخ پایان': p.endDate?toJalali(p.endDate):'نامشخص', 'وضعیت': classStatus(p), 'پیشرفت (%)': p.progress||0, 'توضیحات': p.note||'',
+    'تاریخ پایان': p.endDate?toJalali(p.endDate):'نامشخص', 'وضعیت': dateRangeStatus(p), 'پیشرفت (%)': p.progress||0, 'توضیحات': p.note||'',
   }));
 }
 function meetingsToRows(list){
@@ -925,21 +914,21 @@ function openProgressModal(entityType, id){
   if(!item.progressLog) item.progressLog = [];
   const label = entityType==='class' ? (item.name||item.category) : item.name;
   openModal(`
-    <h3>پیشرفت · ${label}</h3>
+    <h3>پیشرفت · ${esc(label)}</h3>
     <div class="field">
       <label>درصد پیشرفت فعلی: <b style="color:var(--gold-soft);">${faDigits(item.progress||0)}٪</b></label>
-      <input id="f-prog-pct" type="range" min="0" max="100" step="5" value="${item.progress||0}" style="width:100%;" oninput="document.getElementById('f-prog-pct-label').textContent=faDigits(this.value)+'٪'">
+      <input id="f-prog-pct" type="range" min="0" max="100" step="5" value="${esc(item.progress||0)}" style="width:100%;" oninput="document.getElementById('f-prog-pct-label').textContent=faDigits(this.value)+'٪'">
       <div class="hint">مقدار جدید: <span id="f-prog-pct-label">${faDigits(item.progress||0)}٪</span></div>
     </div>
     <div class="sectiontitle">افزودن یادداشت پیشرفت</div>
     <div class="field"><label>یادداشت (اختیاری)</label><input id="f-prog-note" placeholder="مثلاً: هفتهٔ سوم درس تمام شد"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
-      <button class="btn" onclick="saveProgress('${entityType}','${id}')">ثبت پیشرفت</button>
+      <button class="btn" onclick="saveProgress('${escJs(entityType)}','${escJs(id)}')">ثبت پیشرفت</button>
     </div>
     <div class="sectiontitle">تاریخچهٔ پیشرفت</div>
     <div id="prog-log-list">
-      ${item.progressLog.length ? item.progressLog.map(l=>`<div class="log-item"><div class="log-date">${toJalali(l.date)} · ${faDigits(l.pct)}٪</div>${l.note||''}</div>`).join('') : '<div class="empty">هنوز یادداشتی ثبت نشده.</div>'}
+      ${item.progressLog.length ? item.progressLog.map(l=>`<div class="log-item"><div class="log-date">${toJalali(l.date)} · ${faDigits(l.pct)}٪</div>${esc(l.note||'')}</div>`).join('') : '<div class="empty">هنوز یادداشتی ثبت نشده.</div>'}
     </div>
   `);
 }
@@ -973,9 +962,58 @@ function classTimeLabel(c){
   if(c.startTime && c.endTime) return `${formatTimeAmPm(c.startTime)} تا ${formatTimeAmPm(c.endTime)}`;
   return formatTimeAmPm(c.startTime||c.endTime);
 }
+/* ---------------- Class schedule ----------------
+   Classes meet 6 days a week, Saturday to Thursday (Friday is off). A class is
+   defined by its start date (chosen freely) and its number of sessions; the
+   end date is the date of the last session. */
+const CLASS_DEFAULT_SESSIONS = 26; // ≈ one month at 6 sessions per week
+const WEEKDAY_NAMES = ['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه']; // index = Date.getDay()
+function isClassDay(iso){ return new Date(iso+'T00:00:00').getDay()!==5; }
+function weekdayName(iso){ return WEEKDAY_NAMES[new Date(iso+'T00:00:00').getDay()]; }
+/* The first `count` class days (Sat–Thu) on or after `startISO`. */
+function classSessionsFrom(startISO, count){
+  const dates = [];
+  if(!startISO || !(count>0)) return dates;
+  const d = new Date(startISO+'T00:00:00');
+  if(isNaN(d.getTime())) return dates;
+  while(dates.length < count){
+    if(d.getDay()!==5) dates.push(dateToISO(d));
+    d.setDate(d.getDate()+1);
+  }
+  return dates;
+}
+/* All session dates of a class. Classes saved with an end date use every
+   Sat–Thu day up to it; older classes saved without one get the standard
+   number of sessions (previously they only listed days up to today). */
+function classSessionDates(c){
+  if(!c || !c.startDate) return [];
+  if(!c.endDate) return classSessionsFrom(c.startDate, Number(c.sessionCount)||CLASS_DEFAULT_SESSIONS);
+  const dates = [];
+  const d = new Date(c.startDate+'T00:00:00');
+  const endD = new Date(c.endDate+'T00:00:00');
+  while(d<=endD){
+    if(d.getDay()!==5) dates.push(dateToISO(d));
+    d.setDate(d.getDate()+1);
+  }
+  return dates;
+}
+function classEndDate(c){
+  if(!c) return '';
+  if(c.endDate) return c.endDate;
+  const dates = classSessionDates(c);
+  return dates.length ? dates[dates.length-1] : '';
+}
+/* Status from a plain start/end date range (projects etc.): no end date = ongoing. */
+function dateRangeStatus(item){
+  const today = todayISO();
+  if(item.endDate && today>item.endDate) return 'پایان‌یافته';
+  if(item.startDate && today<item.startDate) return 'آینده';
+  return 'در حال برگزاری';
+}
 function classStatus(cls){
   const today = todayISO();
-  if(cls.endDate && today>cls.endDate) return 'پایان‌یافته';
+  const end = classEndDate(cls);
+  if(end && today>end) return 'پایان‌یافته';
   if(cls.startDate && today<cls.startDate) return 'آینده';
   return 'در حال برگزاری';
 }
@@ -984,23 +1022,58 @@ function classStatusTagClass(st){
   if(st==='آینده') return 'info';
   return 'income';
 }
-/* Progress driven by elapsed time: start→end is 0→100%.
-   Each course runs ~one month (26 sessions); if no end date, assume start + 1 month.
+/* Progress driven by elapsed time: start→end (last session) is 0→100%.
    Finished class → 100%, not-yet-started → 0%. */
 function classTimeProgress(c){
   if(!c || !c.startDate) return 0;
   const start = new Date(c.startDate+'T00:00:00');
   if(isNaN(start.getTime())) return 0;
   let end;
-  if(c.endDate){ end = new Date(c.endDate+'T00:00:00'); }
-  else { end = new Date(start.getTime()); end.setMonth(end.getMonth()+1); }
+  const endISO = classEndDate(c);
+  end = new Date(endISO+'T00:00:00');
   const now = new Date(); now.setHours(0,0,0,0);
   if(now <= start) return 0;
   if(now >= end) return 100;
   return Math.max(0, Math.min(100, Math.round((now - start) / (end - start) * 100)));
 }
 function teacherName(id){ const t = db.teachers.find(x=>x.id===id); return t?t.name:'-'; }
-function teacherClassesList(id){ return db.classes.filter(c=>c.teacherId===id); }
+/* ---------------- Two-teacher (shared) classes ----------------
+   A class can be taught by two teachers, each teaching some skills (e.g.
+   Reading & Writing / Listening & Speaking) on alternate days, three days a
+   week each: teacher 1 on Sat/Mon/Wed (teacher1Days 'sat') or Sun/Tue/Thu
+   ('sun'); teacher 2 on the other three. Fields: teacherId, teacherSkills,
+   teacher2Id, teacher2Skills, teacher1Days. Each teacher's pay counts such a
+   class as half, whatever their salary type. */
+const SHARED_CLASS_DAYS = { sat:[6,1,3], sun:[0,2,4] }; // Date.getDay(): Sat=6, Sun=0 …
+const SHARED_DAY_LABELS = { sat:'شنبه، دوشنبه، چهارشنبه', sun:'یکشنبه، سه‌شنبه، پنجشنبه' };
+function isSharedClass(c){ return !!(c && c.teacherId && c.teacher2Id && c.teacher2Id!==c.teacherId); }
+function classTeacherIds(c){ return !c ? [] : isSharedClass(c) ? [c.teacherId, c.teacher2Id] : (c.teacherId ? [c.teacherId] : []); }
+function classHasTeacher(c, teacherId){ return !!teacherId && classTeacherIds(c).includes(teacherId); }
+/* Share of a class that counts towards a teacher's pay: 1, ½ when shared, 0 if not theirs. */
+function classPayShare(c, teacherId){ return classHasTeacher(c, teacherId) ? (isSharedClass(c) ? 0.5 : 1) : 0; }
+function classTeacherDaysKey(c, teacherId){
+  const first = c.teacher1Days==='sun' ? 'sun' : 'sat';
+  return teacherId===c.teacherId ? first : (first==='sat' ? 'sun' : 'sat');
+}
+/* Who teaches a shared class on a given date (the only teacher otherwise). */
+function classTeacherOnDate(c, iso){
+  if(!isSharedClass(c)) return c.teacherId||'';
+  const day = new Date(iso+'T00:00:00').getDay();
+  return SHARED_CLASS_DAYS[classTeacherDaysKey(c, c.teacherId)].includes(day) ? c.teacherId : c.teacher2Id;
+}
+function classTeacherSkills(c, teacherId){ return teacherId===c.teacherId ? (c.teacherSkills||'') : teacherId===c.teacher2Id ? (c.teacher2Skills||'') : ''; }
+function classTeachersLabel(c){
+  if(!isSharedClass(c)) return teacherName(c.teacherId);
+  return classTeacherIds(c).map(id=>{ const sk = classTeacherSkills(c, id); return teacherName(id) + (sk ? ` (${sk})` : ''); }).join(' + ');
+}
+/* Length of one session in hours, from the class start/end times (0 if unknown). */
+function classSessionHours(c){
+  if(!c.startTime || !c.endTime) return 0;
+  const [h1,m1] = c.startTime.split(':').map(Number), [h2,m2] = c.endTime.split(':').map(Number);
+  const mins = (h2*60+m2) - (h1*60+m1);
+  return mins>0 ? mins/60 : 0;
+}
+function teacherClassesList(id){ return db.classes.filter(c=>classHasTeacher(c, id)); }
 function className(id){ const c = db.classes.find(x=>x.id===id); return c?(c.name||c.category):'-'; }
 function classBranch(id){ const c = db.classes.find(x=>x.id===id); return c?(c.branch||'-'):'-'; }
 
@@ -1049,16 +1122,16 @@ function studentStatusTagClass(st){
 function classOptionsHtml(selectedId){
   if(!db.classes.length) return '<option value="">ابتدا یک صنف بسازید</option>';
   return '<option value="">انتخاب کنید</option>' + db.classes.map(c=>
-    `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name||c.category} · ${c.branch||'-'}${c.startTime?' · '+classTimeLabel(c):''} (${classStatus(c)})</option>`
+    `<option value="${esc(c.id)}" ${c.id===selectedId?'selected':''}>${esc(c.name||c.category)} · ${esc(c.branch||'-')}${esc(c.startTime?' · '+classTimeLabel(c):'')} (${esc(classStatus(c))})</option>`
   ).join('');
 }
 function teacherOptionsHtml(selectedId){
   return '<option value="">بدون مدرس مشخص</option>' + db.teachers.map(t=>
-    `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${t.name}</option>`
+    `<option value="${esc(t.id)}" ${t.id===selectedId?'selected':''}>${esc(t.name)}</option>`
   ).join('');
 }
 function categoryOptionsHtml(list, selected){
-  return list.map(c=>`<option value="${c}" ${c===selected?'selected':''}>${c}</option>`).join('');
+  return list.map(c=>`<option value="${esc(c)}" ${c===selected?'selected':''}>${esc(c)}</option>`).join('');
 }
 function openClassModal(id){
   const c = id ? db.classes.find(x=>x.id===id) : null;
@@ -1070,12 +1143,34 @@ function openClassModal(id){
       <div class="field"><label>شعبه</label><select id="f-cls-branch">${categoryOptionsHtml(BRANCHES, c?c.branch:BRANCHES[0])}</select></div>
       <div class="field"><label>دسته</label><select id="f-cls-category">${categoryOptionsHtml(CLASS_CATEGORIES, c?c.category:CLASS_CATEGORIES[0])}</select></div>
     </div>
-    <div class="field"><label>نام صنف (اختیاری)</label><input id="f-cls-name" value="${c?c.name||'':''}" placeholder="مثلاً: جنرال انگلیسی - سطح مبتدی"></div>
+    <div class="field"><label>نام صنف (اختیاری)</label><input id="f-cls-name" value="${esc(c?c.name||'':'')}" placeholder="مثلاً: جنرال انگلیسی - سطح مبتدی"></div>
     <div class="field"><label>مدرس</label>
       <div style="display:flex; gap:6px;">
-        <select id="f-cls-teacher" style="flex:1;">${teacherOptionsHtml(c?c.teacherId:'')}</select>
+        <select id="f-cls-teacher" style="flex:1;" onchange="updateSharedClassFields()">${teacherOptionsHtml(c?c.teacherId:'')}</select>
         <button type="button" class="btn ghost small" onclick="quickAddTeacher()">+ مدرس</button>
       </div>
+    </div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="f-cls-shared" style="width:auto;" ${isSharedClass(c)?'checked':''} onchange="updateSharedClassFields()">
+        این صنف دو مدرس دارد (هر مدرس ۳ روز در هفته، یک روز در میان)
+      </label>
+    </div>
+    <div id="f-cls-shared-box" style="display:none; padding:12px; border-radius:var(--radius-sm); background:var(--panel-2); margin-bottom:14px;">
+      <div class="field-row">
+        <div class="field"><label>مهارت‌های مدرس اول</label><input id="f-cls-skills1" value="${esc(c?c.teacherSkills||'':'')}" placeholder="مثلاً: Reading & Writing"></div>
+        <div class="field"><label>روزهای مدرس اول</label><select id="f-cls-days1" onchange="updateSharedClassFields()">
+          <option value="sat" ${!c||c.teacher1Days!=='sun'?'selected':''}>${esc(SHARED_DAY_LABELS.sat)}</option>
+          <option value="sun" ${c&&c.teacher1Days==='sun'?'selected':''}>${esc(SHARED_DAY_LABELS.sun)}</option>
+        </select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>مدرس دوم</label><select id="f-cls-teacher2" onchange="updateSharedClassFields()">${teacherOptionsHtml(c?c.teacher2Id||'':'')}</select></div>
+        <div class="field"><label>مهارت‌های مدرس دوم</label><input id="f-cls-skills2" value="${esc(c?c.teacher2Skills||'':'')}" placeholder="مثلاً: Listening & Speaking"></div>
+      </div>
+      <p class="hint" id="f-cls-days2-hint" style="margin:-4px 0 8px;"></p>
+      <p class="hint" id="f-cls-hourly-note" style="display:none; margin:0;"></p>
+      <p class="hint" style="margin:8px 0 0;">حقوق این صنف برای هر دو مدرس نصف حساب می‌شود: درصد شهریه، مبلغ ثابتِ «به ازای هر صنف»، ساعات صنف برای مدرسان ساعتی، و بخش درصدیِ «ثابت + درصد» (بخش ثابت تغییر نمی‌کند).</p>
     </div>
     <div class="field-row">
       <div class="field"><label>شیوهٔ برگزاری</label><select id="f-cls-mode">
@@ -1083,29 +1178,63 @@ function openClassModal(id){
         <option value="آنلاین" ${c&&c.mode==='آنلاین'?'selected':''}>آنلاین</option>
         <option value="حضوری و آنلاین" ${c&&c.mode==='حضوری و آنلاین'?'selected':''}>حضوری و آنلاین</option>
       </select></div>
-      <div class="field"><label>ظرفیت (اختیاری)</label><input id="f-cls-capacity" type="number" min="0" value="${c&&c.capacity?c.capacity:''}"></div>
+      <div class="field"><label>ظرفیت (اختیاری)</label><input id="f-cls-capacity" type="number" min="0" value="${esc(c&&c.capacity?c.capacity:'')}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>ساعت آغاز</label><input id="f-cls-start-time" type="time" value="${c?c.startTime||'':''}"></div>
-      <div class="field"><label>ساعت پایان</label><input id="f-cls-end-time" type="time" value="${c?c.endTime||'':''}"></div>
+      <div class="field"><label>ساعت آغاز</label><input id="f-cls-start-time" type="time" value="${esc(c?c.startTime||'':'')}"></div>
+      <div class="field"><label>ساعت پایان</label><input id="f-cls-end-time" type="time" value="${esc(c?c.endTime||'':'')}"></div>
     </div>
-    <div class="field"><label>تاریخ آغاز</label>${jalaliPicker('f-cls-start', c?c.startDate:null)}</div>
-    <div class="field">
-      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" id="f-cls-has-end" style="width:auto;" ${c&&c.endDate?'checked':''} onchange="document.getElementById('f-cls-end-container').style.display=this.checked?'block':'none';">
-        تاریخ پایان مشخص است
-      </label>
-      <div id="f-cls-end-container" style="margin-top:8px; ${c&&c.endDate?'':'display:none;'}">
-        ${jalaliPicker('f-cls-end', c?c.endDate:null)}
-      </div>
+    <div class="field-row">
+      <div class="field"><label>تاریخ آغاز (روز اول صنف)</label>${jalaliPicker('f-cls-start', c?c.startDate:null)}</div>
+      <div class="field"><label>تعداد جلسات</label><input id="f-cls-sessions" type="number" min="1" max="400" value="${c ? (classSessionDates(c).length||CLASS_DEFAULT_SESSIONS) : CLASS_DEFAULT_SESSIONS}" oninput="updateClassSchedulePreview()"></div>
     </div>
-    <div class="field"><label>سالن/اتاق (اختیاری)</label><input id="f-cls-location" value="${c?c.location||'':''}" placeholder="مثلاً: اتاق ۲"></div>
-    <div class="field"><label>توضیحات</label><input id="f-cls-note" value="${c?c.note||'':''}"></div>
+    <p class="hint" style="margin:-4px 0 12px;">صنف‌ها ۶ روز در هفته، از شنبه تا پنجشنبه برگزار می‌شوند (جمعه رخصتی). تاریخ پایان از روی تاریخ آغاز و تعداد جلسات محاسبه می‌شود.</p>
+    <div id="f-cls-schedule" style="font-size:12.5px; margin:-4px 0 14px; padding:10px 12px; border-radius:var(--radius-sm); background:var(--panel-2); line-height:1.8;"></div>
+    <div class="field"><label>سالن/اتاق (اختیاری)</label><input id="f-cls-location" value="${esc(c?c.location||'':'')}" placeholder="مثلاً: اتاق ۲"></div>
+    <div class="field"><label>توضیحات</label><input id="f-cls-note" value="${esc(c?c.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
-      <button class="btn" onclick="saveClass(${c?`'${c.id}'`:'null'})">ذخیره</button>
+      <button class="btn" onclick="saveClass(${c?`'${escJs(c.id)}'`:'null'})">ذخیره</button>
     </div>
   `);
+  const wrap = document.getElementById('f-cls-start-wrap');
+  if(wrap) wrap.addEventListener('change', updateClassSchedulePreview);
+  updateClassSchedulePreview();
+  updateSharedClassFields();
+}
+/* Shows/labels the second-teacher fields of the class form. */
+function updateSharedClassFields(){
+  const box = document.getElementById('f-cls-shared-box'); if(!box) return;
+  const on = document.getElementById('f-cls-shared').checked;
+  box.style.display = on ? '' : 'none';
+  const days1 = document.getElementById('f-cls-days1').value;
+  const hint = document.getElementById('f-cls-days2-hint');
+  if(hint) hint.textContent = `روزهای مدرس دوم: ${days1==='sat' ? SHARED_DAY_LABELS.sun : SHARED_DAY_LABELS.sat}`;
+  const hourly = ['f-cls-teacher','f-cls-teacher2'].map(id=>db.teachers.find(x=>x.id===document.getElementById(id).value)).filter(t=>t && t.payType===PAY_HOURLY);
+  const note = document.getElementById('f-cls-hourly-note');
+  if(note){
+    note.style.display = on && hourly.length ? '' : 'none';
+    note.textContent = hourly.length ? `${hourly.map(t=>t.name).join(' و ')} حقوق ساعتی دارد؛ ساعت آغاز و پایان صنف لازم است تا نصف ساعات این صنف از حقوقش کم شود.` : '';
+  }
+}
+function classFormSessionCount(){
+  const n = Math.round(Number(document.getElementById('f-cls-sessions').value));
+  return n>0 ? Math.min(n, 400) : 0;
+}
+/* Live preview of the session dates in the class form. */
+function updateClassSchedulePreview(){
+  const box = document.getElementById('f-cls-schedule'); if(!box) return;
+  const n = classFormSessionCount();
+  if(!n){ box.innerHTML = '<span style="color:var(--cost);">تعداد جلسات را وارد کنید.</span>'; return; }
+  const start = jalaliPickerValue('f-cls-start');
+  const dates = classSessionsFrom(start, n);
+  const fmt = d => `${esc(weekdayName(d))} ${toJalali(d)}`;
+  const fridayNote = isClassDay(start) ? '' : `<div style="color:var(--gold-soft);">تاریخ انتخاب‌شده جمعه است؛ صنف از شنبه آغاز می‌شود.</div>`;
+  const weeks = Math.ceil(n/6);
+  box.innerHTML = `${fridayNote}
+    <div>جلسهٔ اول: <b>${fmt(dates[0])}</b></div>
+    <div>جلسهٔ آخر (تاریخ پایان): <b>${fmt(dates[dates.length-1])}</b></div>
+    <div style="color:var(--text-dim);">${faDigits(n)} جلسه · حدود ${faDigits(weeks)} هفته · شنبه تا پنجشنبه</div>`;
 }
 function quickAddTeacher(){
   const name = prompt('نام مدرس جدید را وارد کنید:');
@@ -1122,19 +1251,36 @@ function quickAddTeacher(){
   }
 }
 function saveClass(id){
-  const hasEnd = document.getElementById('f-cls-has-end').checked;
+  const sessionCount = classFormSessionCount();
+  if(!sessionCount){ alert('تعداد جلسات را وارد کنید.'); return; }
+  const shared = document.getElementById('f-cls-shared').checked;
+  const t1 = document.getElementById('f-cls-teacher').value, t2 = document.getElementById('f-cls-teacher2').value;
+  if(shared){
+    if(!t1 || !t2){ alert('برای صنف دو مدرسه، هر دو مدرس را انتخاب کنید.'); return; }
+    if(t1===t2){ alert('مدرس اول و دوم نمی‌توانند یک نفر باشند.'); return; }
+    const needsTime = [t1,t2].some(tid=>{ const t=db.teachers.find(x=>x.id===tid); return t && t.payType===PAY_HOURLY; });
+    if(needsTime && !(document.getElementById('f-cls-start-time').value && document.getElementById('f-cls-end-time').value)){
+      alert('برای محاسبهٔ حقوق مدرس ساعتی، ساعت آغاز و پایان صنف را وارد کنید.'); return;
+    }
+  }
+  const sessions = classSessionsFrom(jalaliPickerValue('f-cls-start'), sessionCount);
   const rec = {
     id: id || uid(),
     branch: document.getElementById('f-cls-branch').value,
     category: document.getElementById('f-cls-category').value,
     name: document.getElementById('f-cls-name').value.trim(),
-    teacherId: document.getElementById('f-cls-teacher').value,
+    teacherId: t1,
+    teacherSkills: shared ? document.getElementById('f-cls-skills1').value.trim() : '',
+    teacher2Id: shared ? t2 : '',
+    teacher2Skills: shared ? document.getElementById('f-cls-skills2').value.trim() : '',
+    teacher1Days: shared ? document.getElementById('f-cls-days1').value : '',
     mode: document.getElementById('f-cls-mode').value,
     capacity: Number(document.getElementById('f-cls-capacity').value)||0,
     startTime: document.getElementById('f-cls-start-time').value,
     endTime: document.getElementById('f-cls-end-time').value,
-    startDate: jalaliPickerValue('f-cls-start'),
-    endDate: hasEnd ? jalaliPickerValue('f-cls-end') : '',
+    startDate: sessions[0],               // a Friday start moves to the next Saturday
+    endDate: sessions[sessions.length-1],
+    sessionCount,
     location: document.getElementById('f-cls-location').value.trim(),
     note: document.getElementById('f-cls-note').value.trim(),
   };
@@ -1174,7 +1320,7 @@ function openSeminarModal(id){
   openModal(`
     <h3>${s?'ویرایش رویداد':'رویداد جدید'}</h3>
     <p class="sub">تصمیم می‌گیرید که این رویداد پولی باشد یا رایگان؛ محاسبهٔ تخفیف به‌صورت خودکار انجام می‌شود</p>
-    <div class="field"><label>عنوان</label><input id="f-sem-title" value="${s?s.title||'':''}" placeholder="مثلاً: کارگاه آمادگی آیلتس"></div>
+    <div class="field"><label>عنوان</label><input id="f-sem-title" value="${esc(s?s.title||'':'')}" placeholder="مثلاً: کارگاه آمادگی آیلتس"></div>
     <div class="field-row">
       <div class="field"><label>نوع</label><select id="f-sem-type">${categoryOptionsHtml(SEMINAR_TYPES, s?s.type:SEMINAR_TYPES[0])}</select></div>
       <div class="field"><label>شیوه</label><select id="f-sem-mode">${categoryOptionsHtml(SEMINAR_MODES, s?s.mode:SEMINAR_MODES[0])}</select></div>
@@ -1189,7 +1335,7 @@ function openSeminarModal(id){
       </div>
     </div>
     <div class="field"><label>تاریخ برگزاری</label>${jalaliPicker('f-sem-date', s?s.date:null)}</div>
-    <div class="field"><label>تعداد شرکت‌کننده (اختیاری)</label><input id="f-sem-count" type="number" min="0" value="${s&&s.attendeeCount?s.attendeeCount:''}"></div>
+    <div class="field"><label>تعداد شرکت‌کننده (اختیاری)</label><input id="f-sem-count" type="number" min="0" value="${esc(s&&s.attendeeCount?s.attendeeCount:'')}"></div>
 
     <div class="sectiontitle">هزینهٔ ثبت‌نام</div>
     <div class="field">
@@ -1200,12 +1346,12 @@ function openSeminarModal(id){
     </div>
     <div id="f-sem-fee-container" style="${isPaid?'':'display:none;'}">
       <div class="field-row">
-        <div class="field"><label>هزینهٔ ثبت‌نام (افغانی)</label><input id="f-sem-fee" class="money-input" value="${s&&s.fee?numFmt(s.fee):''}" oninput="formatMoneyInput(this); updateSeminarCalc();" placeholder="۰"></div>
-        <div class="field"><label>درصد تخفیف</label><input id="f-sem-discount" type="number" min="0" max="100" value="${s&&s.discountPercent?s.discountPercent:0}" oninput="updateSeminarCalc()"></div>
+        <div class="field"><label>هزینهٔ ثبت‌نام (افغانی)</label><input id="f-sem-fee" class="money-input" value="${esc(s&&s.fee?numFmt(s.fee):'')}" oninput="formatMoneyInput(this); updateSeminarCalc();" placeholder="۰"></div>
+        <div class="field"><label>درصد تخفیف</label><input id="f-sem-discount" type="number" min="0" max="100" value="${esc(s&&s.discountPercent?s.discountPercent:0)}" oninput="updateSeminarCalc()"></div>
       </div>
       <div class="calc-box"><span>هزینهٔ نهایی بعد از تخفیف (هر نفر)</span><b id="f-sem-net-display">${afn(netAfterDiscount(s?s.fee:0, s?s.discountPercent:0))}</b></div>
     </div>
-    <div class="field"><label>توضیحات</label><input id="f-sem-note" value="${s?s.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-sem-note" value="${esc(s?s.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveSeminar(${s?`'${s.id}'`:'null'})">ذخیره</button>
@@ -1246,7 +1392,7 @@ function resultTagClass(result){
   return 'info';
 }
 function resultOptionsHtml(selected){
-  return RESULT_OPTIONS.map(r=>`<option value="${r}" ${r===(selected||'')?'selected':''}>${r||'در حال آموزش'}</option>`).join('');
+  return RESULT_OPTIONS.map(r=>`<option value="${esc(r)}" ${r===(selected||'')?'selected':''}>${esc(r||'در حال آموزش')}</option>`).join('');
 }
 let pendingStudentPhoto = '';
 let pendingStudentIdPhoto = '';
@@ -1268,7 +1414,7 @@ function openStudentModal(id){
     <div class="sectiontitle">مشخصات شاگرد</div>
     ${s ? `
       <div class="field"><label>شاگرد</label>
-        <input disabled value="${p?p.code+' · '+p.name:'-'}" style="opacity:.75;">
+        <input disabled value="${esc(p?p.code+' · '+p.name:'-')}" style="opacity:.75;">
       </div>
       <p class="hint" style="margin:-4px 0 12px; font-size:11px; color:var(--text-faint);">برای ویرایش مشخصات این شاگرد، روی کد او در جدول کلیک کنید و از صفحهٔ پروندهٔ او اقدام نمایید.</p>
     ` : `
@@ -1276,7 +1422,7 @@ function openStudentModal(id){
         <label>جستجوی شاگرد موجود (اختیاری · برای ثبت‌نام در صنف جدید)</label>
         <input id="f-st-profile-search" list="dl-profiles" placeholder="کد یا نام را تایپ کنید، یا برای شاگرد جدید خالی بگذارید" oninput="onProfileSearchInput()">
         <datalist id="dl-profiles">
-          ${db.studentProfiles.map(pr=>`<option value="${pr.code} · ${pr.name}">`).join('')}
+          ${db.studentProfiles.map(pr=>`<option value="${esc(pr.code)} · ${esc(pr.name)}">`).join('')}
         </datalist>
       </div>
       <input type="hidden" id="f-st-profile-id" value="">
@@ -1309,11 +1455,11 @@ function openStudentModal(id){
 
     <div class="sectiontitle">شهریه</div>
     <div class="field-row">
-      <div class="field"><label>مبلغ شهریه (۰ برای رایگان)</label><input id="f-st-fee" class="money-input" value="${s&&s.feeAmount?numFmt(s.feeAmount):''}" oninput="formatMoneyInput(this); updateStudentCalc();" placeholder="۰"></div>
-      <div class="field"><label>درصد تخفیف دستی</label><input id="f-st-discount" type="number" min="0" max="100" value="${s&&s.discountPercent?s.discountPercent:0}" oninput="updateStudentCalc()"></div>
+      <div class="field"><label>مبلغ شهریه (۰ برای رایگان)</label><input id="f-st-fee" class="money-input" value="${esc(s&&s.feeAmount?numFmt(s.feeAmount):'')}" oninput="formatMoneyInput(this); updateStudentCalc();" placeholder="۰"></div>
+      <div class="field"><label>درصد تخفیف دستی</label><input id="f-st-discount" type="number" min="0" max="100" value="${esc(s&&s.discountPercent?s.discountPercent:0)}" oninput="updateStudentCalc()"></div>
     </div>
     <div class="calc-box"><span>شهریهٔ نهایی (فقط تخفیف دستی · تخفیف معرفی/خانوادگی پس از ذخیره افزوده می‌شود)</span><b id="f-st-net-display">${afn(netAfterDiscount(s?s.feeAmount:0, s?s.discountPercent:0))}</b></div>
-    <div class="field" style="margin-top:12px;"><label>مبلغ پرداخت‌شده</label><input id="f-st-paid" class="money-input" value="${s&&s.paidAmount?numFmt(s.paidAmount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+    <div class="field" style="margin-top:12px;"><label>مبلغ پرداخت‌شده</label><input id="f-st-paid" class="money-input" value="${esc(s&&s.paidAmount?numFmt(s.paidAmount):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     ${!s ? `
       <div class="field"><label>کد تخفیف مکتب (اختیاری)</label>
         <input id="f-st-school-code" placeholder="کد چاپ‌شده روی برگهٔ مکتب را وارد کنید" oninput="onSchoolCodeInput()" autocomplete="off">
@@ -1326,8 +1472,8 @@ function openStudentModal(id){
 
     <div class="sectiontitle">کتاب و کارت شاگردی (جدا از شهریه)</div>
     <div class="field-row">
-      <div class="field"><label>عنوان کتاب</label><input id="f-st-book-title" value="${s?s.bookTitle||'':''}" placeholder="مثلاً: General English Coursebook 1"></div>
-      <div class="field"><label>قیمت کتاب</label><input id="f-st-book-price" class="money-input" value="${s&&s.bookPrice?numFmt(s.bookPrice):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+      <div class="field"><label>عنوان کتاب</label><input id="f-st-book-title" value="${esc(s?s.bookTitle||'':'')}" placeholder="مثلاً: General English Coursebook 1"></div>
+      <div class="field"><label>قیمت کتاب</label><input id="f-st-book-price" class="money-input" value="${esc(s&&s.bookPrice?numFmt(s.bookPrice):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     </div>
     <div class="field">
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -1336,7 +1482,7 @@ function openStudentModal(id){
       </label>
     </div>
     <div class="field-row">
-      <div class="field"><label>قیمت کارت شاگردی</label><input id="f-st-idcard-price" class="money-input" value="${s&&s.idCardPrice?numFmt(s.idCardPrice):'۱۵۰'}" oninput="formatMoneyInput(this)"></div>
+      <div class="field"><label>قیمت کارت شاگردی</label><input id="f-st-idcard-price" class="money-input" value="${esc(s&&s.idCardPrice?numFmt(s.idCardPrice):'۱۵۰')}" oninput="formatMoneyInput(this)"></div>
       <div class="field">
         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-top:24px;">
           <input type="checkbox" id="f-st-idcard-paid" style="width:auto;" ${s&&s.idCardPaid?'checked':''}>
@@ -1347,13 +1493,13 @@ function openStudentModal(id){
 
     <div class="sectiontitle">نمرات و نتیجه</div>
     <div class="field-row">
-      <div class="field"><label>نمرهٔ فعالیت صنفی (از ۱۰۰)</label><input id="f-st-activity" type="number" min="0" max="100" value="${s?s.activityScore||'':''}"></div>
-      <div class="field"><label>نمرهٔ امتحان میان‌ترم (از ۱۰۰)</label><input id="f-st-midterm" type="number" min="0" max="100" value="${s?s.midtermScore||'':''}"></div>
-      <div class="field"><label>نمرهٔ امتحان فاینل (از ۱۰۰)</label><input id="f-st-exam" type="number" min="0" max="100" value="${s?s.examScore||'':''}"></div>
+      <div class="field"><label>نمرهٔ فعالیت صنفی (از ۱۰۰)</label><input id="f-st-activity" type="number" min="0" max="100" value="${esc(s?s.activityScore||'':'')}"></div>
+      <div class="field"><label>نمرهٔ امتحان میان‌ترم (از ۱۰۰)</label><input id="f-st-midterm" type="number" min="0" max="100" value="${esc(s?s.midtermScore||'':'')}"></div>
+      <div class="field"><label>نمرهٔ امتحان فاینل (از ۱۰۰)</label><input id="f-st-exam" type="number" min="0" max="100" value="${esc(s?s.examScore||'':'')}"></div>
     </div>
     <div class="field"><label>نتیجهٔ صنف</label><select id="f-st-result">${resultOptionsHtml(s?s.result:'')}</select></div>
     <p class="hint" style="margin:-6px 0 12px;">«کامیاب مشروط» برای شاگردانی است که با شرایطی مانند امتحان مجدد (ری‌تیک) اجازهٔ رفتن به سطح بعدی را دارند.</p>
-    <div class="field"><label>توضیحات</label><input id="f-st-note" value="${s?s.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-st-note" value="${esc(s?s.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveStudent(${s?`'${s.id}'`:'null'})">ذخیره</button>
@@ -1499,67 +1645,68 @@ function openStudentProfileModal(profileId){
     const att = studentAttendanceTotals(s.classId, s.id);
     return `
     <tr>
-      <td>${className(s.classId)}</td><td>${classBranch(s.classId)}</td><td>${toJalali(s.registerDate)}</td>
-      <td><span class="tag ${classStatusTagClass(classStatus(db.classes.find(c=>c.id===s.classId)||{}))}">${classStatus(db.classes.find(c=>c.id===s.classId)||{})}</span></td>
+      <td>${esc(className(s.classId))}</td><td>${esc(classBranch(s.classId))}</td><td>${toJalali(s.registerDate)}</td>
+      <td><span class="tag ${classStatusTagClass(classStatus(db.classes.find(c=>c.id===s.classId)||{}))}">${esc(classStatus(db.classes.find(c=>c.id===s.classId)||{}))}</span></td>
       <td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${faDigits(studentTotalDiscountPercent(s))}٪</td>
       <td class="num">${afn(studentNetFee(s))}</td><td class="num">${afn(studentRemaining(s))}</td>
       <td class="num">${faDigits(att.present)}</td><td class="num">${faDigits(att.absent)}</td>
-      <td class="num">${s.activityScore!==''&&s.activityScore!==undefined?faDigits(s.activityScore):'-'}</td>
-      <td class="num">${s.midtermScore!==''&&s.midtermScore!==undefined?faDigits(s.midtermScore):'-'}</td>
-      <td class="num">${s.examScore!==''&&s.examScore!==undefined?faDigits(s.examScore):'-'}</td>
+      <td class="num">${esc(s.activityScore!==''&&s.activityScore!==undefined?faDigits(s.activityScore):'-')}</td>
+      <td class="num">${esc(s.midtermScore!==''&&s.midtermScore!==undefined?faDigits(s.midtermScore):'-')}</td>
+      <td class="num">${esc(s.examScore!==''&&s.examScore!==undefined?faDigits(s.examScore):'-')}</td>
       <td class="num">${(function(){ const pt = (typeof studentParticipationTotals==='function')?studentParticipationTotals(s.classId,s.id):{plus:0,minus:0}; return `<span style="color:var(--income);">+${faDigits(pt.plus)}</span> / <span style="color:var(--cost);">−${faDigits(pt.minus)}</span>`; })()}</td>
-      <td>${s.bookTitle?`${s.bookTitle} <span class="tag ${s.bookPaid?'income':'cost'}" style="margin-right:4px;">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
+      <td>${s.bookTitle?`${esc(s.bookTitle)} <span class="tag ${s.bookPaid?'income':'cost'}" style="margin-right:4px;">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
-      <td>${s.result ? `<span class="tag ${resultTagClass(s.result)}">${s.result}</span>` : '<span class="tag info">در حال آموزش</span>'}</td>
+      <td>${s.result ? `<span class="tag ${resultTagClass(s.result)}">${esc(s.result)}</span>` : '<span class="tag info">در حال آموزش</span>'}</td>
+      <td><button class="btn ghost small" onclick="printStudentProfile('${escJs(p.id)}','${escJs(s.id)}')">رسید</button></td>
     </tr>
   `;
-  }).join('') : `<tr><td colspan="16" class="empty">هنوز در صنفی ثبت‌نام نشده.</td></tr>`;
+  }).join('') : `<tr><td colspan="17" class="empty">هنوز در صنفی ثبت‌نام نشده.</td></tr>`;
 
   const referredByEnrollment = rows.find(s=>s.referredBy);
   const referrerProfile = referredByEnrollment ? profileById(referredByEnrollment.referredBy) : null;
   const referredOthers = db.students.filter(s=>s.referredBy===p.id);
   const referralInfo = `
-    ${referrerProfile ? `<p class="hint">این شاگرد با معرفی <b>${referrerProfile.name} (${referrerProfile.code})</b> ثبت‌نام کرده است.</p>` : ''}
-    ${referredOthers.length ? `<p class="hint">این شاگرد تاکنون <b>${faDigits(referredOthers.length)}</b> نفر را معرفی کرده: ${referredOthers.map(s=>profileName(s.profileId)).join('، ')}</p>` : ''}
+    ${referrerProfile ? `<p class="hint">این شاگرد با معرفی <b>${esc(referrerProfile.name)} (${esc(referrerProfile.code)})</b> ثبت‌نام کرده است.</p>` : ''}
+    ${referredOthers.length ? `<p class="hint">این شاگرد تاکنون <b>${faDigits(referredOthers.length)}</b> نفر را معرفی کرده: ${esc(referredOthers.map(s=>profileName(s.profileId)).join('، '))}</p>` : ''}
   `;
 
   openModal(`
     <h3>پروندهٔ شاگرد</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${p.code||'-'}</span></p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(p.code||'-')}</span></p>
     ${referralInfo}
     <div class="profile-grid">
       <div class="upload-box">
         <label>عکس شاگرد</label>
-        ${p.photo?`<img src="${p.photo}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const pr=profileById('${p.id}'); pr.photo=url; save(); openStudentProfileModal('${p.id}'); })">
+        ${p.photo?`<img src="${esc(p.photo)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const pr=profileById('${escJs(p.id)}'); pr.photo=url; save(); openStudentProfileModal('${escJs(p.id)}'); })">
       </div>
       <div class="upload-box">
         <label>عکس سند هویت</label>
-        ${p.idPhoto?`<img src="${p.idPhoto}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const pr=profileById('${p.id}'); pr.idPhoto=url; save(); openStudentProfileModal('${p.id}'); })">
+        ${p.idPhoto?`<img src="${esc(p.idPhoto)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const pr=profileById('${escJs(p.id)}'); pr.idPhoto=url; save(); openStudentProfileModal('${escJs(p.id)}'); })">
       </div>
     </div>
     <div class="field-row">
-      <div class="field"><label>نام</label><input id="f-pf-name" value="${p.name}"></div>
-      <div class="field"><label>پایه/سن</label><input id="f-pf-grade" value="${p.grade||''}"></div>
+      <div class="field"><label>نام</label><input id="f-pf-name" value="${esc(p.name)}"></div>
+      <div class="field"><label>پایه/سن</label><input id="f-pf-grade" value="${esc(p.grade||'')}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>نام سرپرست</label><input id="f-pf-guardian" value="${p.guardianName||''}"></div>
-      <div class="field"><label>شماره تماس سرپرست</label><input id="f-pf-phone" value="${p.guardianPhone||''}"></div>
+      <div class="field"><label>نام سرپرست</label><input id="f-pf-guardian" value="${esc(p.guardianName||'')}"></div>
+      <div class="field"><label>شماره تماس سرپرست</label><input id="f-pf-phone" value="${esc(p.guardianPhone||'')}"></div>
     </div>
-    <div class="field"><label>کد/نام خانواده (برای تخفیف خانوادگی)</label><input id="f-pf-family" value="${p.familyId||''}" placeholder="مثلاً: نام خانوادگی یا شمارهٔ تماس مشترک خانواده"></div>
-    <div class="field"><label>توضیحات</label><input id="f-pf-note" value="${p.note||''}"></div>
+    <div class="field"><label>کد/نام خانواده (برای تخفیف خانوادگی)</label><input id="f-pf-family" value="${esc(p.familyId||'')}" placeholder="مثلاً: نام خانوادگی یا شمارهٔ تماس مشترک خانواده"></div>
+    <div class="field"><label>توضیحات</label><input id="f-pf-note" value="${esc(p.note||'')}"></div>
 
     <div class="sectiontitle">سابقهٔ صنف‌ها، نمرات و نتیجه</div>
     <div class="table-scroll"><table>
-      <thead><tr><th>صنف</th><th>شعبه</th><th>تاریخ ثبت‌نام</th><th>وضعیت صنف</th><th>تخفیف</th><th>شهریهٔ نهایی</th><th>باقیمانده</th><th>حاضر</th><th>غایب</th><th class="num">فعالیت صنفی</th><th class="num">میان‌ترم</th><th class="num">فاینل</th><th>فعالیت روزانه (+/−)</th><th>کتاب</th><th>کارت شاگردی</th><th>نتیجه</th></tr></thead>
+      <thead><tr><th>صنف</th><th>شعبه</th><th>تاریخ ثبت‌نام</th><th>وضعیت صنف</th><th>تخفیف</th><th>شهریهٔ نهایی</th><th>باقیمانده</th><th>حاضر</th><th>غایب</th><th class="num">فعالیت صنفی</th><th class="num">میان‌ترم</th><th class="num">فاینل</th><th>فعالیت روزانه (+/−)</th><th>کتاب</th><th>کارت شاگردی</th><th>نتیجه</th><th>چاپ</th></tr></thead>
       <tbody>${historyRows}</tbody>
     </table></div>
 
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">بستن</button>
-      <button class="btn secondary" onclick="printStudentProfile('${p.id}')">چاپ پرونده</button>
-      <button class="btn" onclick="saveStudentProfile('${p.id}')">ذخیرهٔ تغییرات</button>
+      <button class="btn secondary" onclick="printStudentProfile('${escJs(p.id)}')">چاپ پرونده</button>
+      <button class="btn" onclick="saveStudentProfile('${escJs(p.id)}')">ذخیرهٔ تغییرات</button>
     </div>
   `, {wide:true});
 }
@@ -1578,19 +1725,19 @@ function saveStudentProfile(id){
 /* ---------------- TEACHER (Personnel) modal ---------------- */
 const PERSONNEL_ROLES = ['مدرس','مدیریت','کارمند'];
 function personnelRoleOptionsHtml(selected){
-  return PERSONNEL_ROLES.map(r=>`<option value="${r}" ${r===(selected||'مدرس')?'selected':''}>${r}</option>`).join('');
+  return PERSONNEL_ROLES.map(r=>`<option value="${esc(r)}" ${r===(selected||'مدرس')?'selected':''}>${esc(r)}</option>`).join('');
 }
 function openTeacherModal(id){
   const t = id ? db.teachers.find(x=>x.id===id) : null;
   openModal(`
     <h3>${t?'ویرایش پرسنل':'پرسنل جدید'}</h3>
-    ${t?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'-'}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
+    ${t?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
     <div class="field-row">
-      <div class="field"><label>نام</label><input id="f-t-name" value="${t?t.name:''}"></div>
+      <div class="field"><label>نام</label><input id="f-t-name" value="${esc(t?t.name:'')}"></div>
       <div class="field"><label>نقش</label><select id="f-t-role">${personnelRoleOptionsHtml(t?t.role:'مدرس')}</select></div>
     </div>
-    <div class="field"><label>شماره تماس</label><input id="f-t-phone" value="${t?t.phone||'':''}"></div>
-    <div class="field"><label>مضامین/تخصص (برای مدرسان)</label><input id="f-t-subjects" value="${t?t.subjects||'':''}" placeholder="مثلاً: جنرال انگلیسی، آیلتس"></div>
+    <div class="field"><label>شماره تماس</label><input id="f-t-phone" value="${esc(t?t.phone||'':'')}"></div>
+    <div class="field"><label>مضامین/تخصص (برای مدرسان)</label><input id="f-t-subjects" value="${esc(t?t.subjects||'':'')}" placeholder="مثلاً: جنرال انگلیسی، آیلتس"></div>
 
     <div class="sectiontitle">قرارداد</div>
     <div class="field-row">
@@ -1608,15 +1755,21 @@ function openTeacherModal(id){
 
     <div class="sectiontitle">حقوق و دستمزد</div>
     <div class="field-row">
-      <div class="field"><label>نوع پرداخت</label><select id="f-t-paytype" onchange="updateTeacherPayField()">
-        <option value="به ازای هر صنف (ماهانه)" ${!t||t.payType==='به ازای هر صنف (ماهانه)'?'selected':''}>به ازای هر صنف (ماهانه)</option>
-        <option value="ماهانه ثابت" ${t&&t.payType==='ماهانه ثابت'?'selected':''}>ماهانه ثابت</option>
-        <option value="درصد شهریه" ${t&&t.payType==='درصد شهریه'?'selected':''}>درصد شهریهٔ جمع‌آوری‌شده</option>
+      <div class="field"><label>نوع پرداخت *</label><select id="f-t-paytype" onchange="updateTeacherPayField()">
+        <option value="" ${!t||!t.payType?'selected':''} disabled>نوع پرداخت را انتخاب کنید</option>
+        ${PAY_TYPES.map(v=>`<option value="${esc(v)}" ${t&&t.payType===v?'selected':''}>${esc(PAY_TYPE_LABELS[v])}</option>`).join('')}
       </select></div>
-      <div class="field"><label id="f-t-payamount-label">مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${t&&t.payAmount?numFmt(t.payAmount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+      <div class="field"><label id="f-t-payamount-label">مبلغ (افغانی)</label><input id="f-t-payamount" class="money-input" value="${esc(t&&t.payAmount?numFmt(t.payAmount):'')}" oninput="formatMoneyInput(this); updateTeacherPayField()" placeholder="۰"></div>
+    </div>
+    <div class="field-row" id="f-t-hourly-fields" style="display:none;">
+      <div class="field"><label>ساعات کار توافق‌شده در روز *</label><input id="f-t-dailyhours" type="number" min="0.5" step="0.5" value="${esc(t&&t.dailyHours?t.dailyHours:'')}" placeholder="مثلاً: ۴" oninput="updateTeacherPayField()"></div>
+      <div class="field"><label>نرخ هر ساعت (محاسبهٔ خودکار)</label><div id="f-t-hourly-rate" style="padding:9px 0; font-weight:700;">-</div></div>
+    </div>
+    <div class="field-row" id="f-t-pct-fields" style="display:none;">
+      <div class="field"><label>درصد از شهریهٔ صنف‌ها (٪)</label><input id="f-t-paypercent" type="number" min="0" max="100" step="0.5" value="${esc(t&&t.payPercent?t.payPercent:'')}" placeholder="مثلاً: ۲۰"></div>
     </div>
     <p class="hint" id="f-t-pay-hint" style="margin:-6px 0 12px;"></p>
-    <div class="field"><label>توضیحات</label><input id="f-t-note" value="${t?t.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-t-note" value="${esc(t?t.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveTeacher(${t?`'${t.id}'`:'null'})">ذخیره</button>
@@ -1630,21 +1783,48 @@ function updateTeacherPayField(){
   const hint = document.getElementById('f-t-pay-hint');
   const input = document.getElementById('f-t-payamount');
   if(!sel || !label || !hint || !input) return;
-  if(sel.value==='درصد شهریه'){
+  const hourlyBox = document.getElementById('f-t-hourly-fields'), pctBox = document.getElementById('f-t-pct-fields');
+  if(hourlyBox) hourlyBox.style.display = sel.value===PAY_HOURLY ? '' : 'none';
+  if(pctBox) pctBox.style.display = sel.value===PAY_FIXED_PCT ? '' : 'none';
+  input.parentElement.style.display = '';
+  if(sel.value===PAY_HOURLY){
+    label.textContent = 'حقوق ماهانه برای ساعات توافق‌شده (افغانی)';
+    input.placeholder = 'مثلاً: ۱۲۰۰۰';
+    const rateEl = document.getElementById('f-t-hourly-rate');
+    const hrs = Number(document.getElementById('f-t-dailyhours').value)||0;
+    if(rateEl) rateEl.textContent = hrs>0 && moneyNum('f-t-payamount')>0 ? afn(Math.round(moneyNum('f-t-payamount')/hrs)) : '-';
+    hint.textContent = 'مثال: ۱۲۰۰۰ افغانی در ماه برای ۴ ساعت کار در روز، یعنی هر ساعت ۳۰۰۰ افغانی. این مبلغ در پایان هر ماه پرداخت می‌شود. اگر در روزی بیشتر از ساعات توافق‌شده کار کند، برای هر ساعت اضافه همین نرخ ساعتی به حقوقش اضافه می‌شود. ساعات کار هر روز در بخش «انضباط پرسنل» ثبت می‌شود.';
+  } else if(sel.value===PAY_FIXED_PCT){
+    label.textContent = 'حقوق ثابت ماهانه (افغانی)';
+    input.placeholder = '۰';
+    hint.textContent = 'حقوق ثابت ماهانه برای کارهای غیرتدریسی (مانند آماده‌سازی مواد درسی) به‌علاوهٔ درصدی از شهریه‌های جمع‌آوری‌شدهٔ صنف‌هایی که تدریس می‌کند (در همان ماه).';
+  } else if(sel.value===PAY_PCT){
     label.textContent = 'درصد (٪)';
     input.placeholder = 'مثلاً: ۲۰';
     hint.textContent = 'در این حالت، حقوق هر ماه برابر است با این درصد از مجموع شهریه‌های جمع‌آوری‌شدهٔ (پرداخت‌شدهٔ) صنف‌های این مدرس در همان ماه. مثلاً ۲۰ یعنی ۲۰٪ از شهریهٔ دریافتی صنف‌های او.';
-  } else if(sel.value==='ماهانه ثابت'){
+  } else if(sel.value===PAY_FIXED){
     label.textContent = 'مبلغ (افغانی)';
     input.placeholder = '۰';
     hint.textContent = 'مبلغ ثابت ماهانه، مستقل از تعداد صنف‌ها.';
-  } else {
-    label.textContent = 'مبلغ (افغانی)';
+  } else if(sel.value===PAY_PER_CLASS){
+    label.textContent = 'مبلغ برای هر صنف (افغانی)';
     input.placeholder = '۰';
-    hint.textContent = 'در حالت «به ازای هر صنف»، این مبلغ به ازای هر صنفی که مدرس در یک ماه داشته باشد پرداخت می‌شود (هر صنف ۶ روز در هفته، شنبه تا پنج‌شنبه، هر جلسه ۶۰ دقیقه، و هر دوره در حدود یک ماه به پایان می‌رسد).';
+    hint.textContent = 'این مبلغ برای هر صنفی که مدرس در یک ماه دارد پرداخت می‌شود (مبلغ × تعداد صنف‌های آغازشده در آن ماه). برای صنف دو مدرسه نصف این مبلغ حساب می‌شود.';
+  } else {
+    input.parentElement.style.display = 'none';
+    hint.textContent = 'نوع پرداخت را انتخاب کنید.';
   }
 }
 function saveTeacher(id){
+  const payType = document.getElementById('f-t-paytype').value;
+  if(!payType){ alert('نوع پرداخت را انتخاب کنید.'); return; }
+  if(payType===PAY_HOURLY && !(Number(document.getElementById('f-t-dailyhours').value)>0)){
+    alert('ساعات کار توافق‌شده در روز را وارد کنید.'); return;
+  }
+  const pctVal = Number(document.getElementById('f-t-paypercent').value);
+  if(payType===PAY_FIXED_PCT && !(pctVal>=0 && pctVal<=100)){
+    alert('درصد شهریه باید بین ۰ و ۱۰۰ باشد.'); return;
+  }
   const existing = id ? db.teachers.find(x=>x.id===id) : null;
   const hasEnd = document.getElementById('f-t-has-cend').checked;
   const createdAt = existing ? (existing.createdAt||todayISO()) : todayISO();
@@ -1660,6 +1840,8 @@ function saveTeacher(id){
     contractEnd: hasEnd ? jalaliPickerValue('f-t-cend') : '',
     payType: document.getElementById('f-t-paytype').value,
     payAmount: moneyNum('f-t-payamount'),
+    dailyHours: payType===PAY_HOURLY ? (Number(document.getElementById('f-t-dailyhours').value)||0) : 0,
+    payPercent: payType===PAY_FIXED_PCT ? (Number(document.getElementById('f-t-paypercent').value)||0) : 0,
     photo: existing ? (existing.photo||'') : '',
     idPhoto: existing ? (existing.idPhoto||'') : '',
     password: existing ? (existing.password || generateUniquePassword()) : generateUniquePassword(),
@@ -1672,7 +1854,7 @@ function saveTeacher(id){
   closeModal(); save();
 }
 function deleteTeacher(id){
-  if(db.classes.some(c=>c.teacherId===id)){
+  if(db.classes.some(c=>classHasTeacher(c, id))){
     if(!confirm('این مدرس به یک یا چند صنف اختصاص دارد. حذف مدرس، آن صنف‌ها را بدون مدرس باقی می‌گذارد. ادامه می‌دهید؟')) return;
   } else if(!confirm('این پرسنل حذف شود؟')) return;
   const it = db.teachers.find(x=>x.id===id);
@@ -1700,8 +1882,8 @@ function openTeacherProfileModal(teacherId){
     const fail = enrolled.filter(s=>s.result==='ناکام').length;
     const att = classAttendanceTotals(c.id);
     return `<tr>
-      <td>${c.name||c.category}</td><td>${c.branch||'-'}</td><td>${toJalali(c.startDate)}</td>
-      <td><span class="tag ${classStatusTagClass(classStatus(c))}">${classStatus(c)}</span></td>
+      <td>${esc(c.name||c.category)}${isSharedClass(c)?`<div style="font-size:11px; color:var(--text-dim);">دو مدرسه · ${esc(classTeacherSkills(c,t.id)||'-')} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,t.id)])}</div>`:''}</td><td>${esc(c.branch||'-')}</td><td>${toJalali(c.startDate)}</td>
+      <td><span class="tag ${classStatusTagClass(classStatus(c))}">${esc(classStatus(c))}</span></td>
       <td class="num">${faDigits(enrolled.length)}</td>
       <td class="num">${faDigits(pass)}</td><td class="num">${faDigits(fail)}</td>
       <td class="num">${faDigits(att.present)}</td><td class="num">${faDigits(att.absent)}</td>
@@ -1713,8 +1895,8 @@ function openTeacherProfileModal(teacherId){
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <span style="font-size:12.5px; color:var(--text-dim);">رمز عبور ورود این شخص (نقش مدرس/مدیر شعبه):</span>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="code-badge" style="cursor:default;">${t.password||'-'}</span>
-          <button class="btn ghost small" onclick="regeneratePersonnelPassword('${t.id}')">تولید رمز جدید</button>
+          <span class="code-badge" style="cursor:default;">${esc(t.password||'-')}</span>
+          <button class="btn ghost small" onclick="regeneratePersonnelPassword('${escJs(t.id)}')">تولید رمز جدید</button>
         </div>
       </div>
     </div>
@@ -1722,25 +1904,25 @@ function openTeacherProfileModal(teacherId){
 
   openModal(`
     <h3>پروندهٔ پرسنل</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${t.code||'-'}</span> · نقش: ${t.role||'مدرس'}</p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span> · نقش: ${esc(t.role||'مدرس')}</p>
     ${passwordBlock}
     ${typeof teacherAdvanceAdminHtml==='function' ? teacherAdvanceAdminHtml(t) : ''}
     <div class="profile-grid">
       <div class="upload-box">
         <label>عکس پرسنل</label>
-        ${t.photo?`<img src="${t.photo}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const tt=db.teachers.find(x=>x.id==='${t.id}'); tt.photo=url; save(); openTeacherProfileModal('${t.id}'); })">
+        ${t.photo?`<img src="${esc(t.photo)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const tt=db.teachers.find(x=>x.id==='${escJs(t.id)}'); tt.photo=url; save(); openTeacherProfileModal('${escJs(t.id)}'); })">
       </div>
       <div class="upload-box">
         <label>عکس سند هویت</label>
-        ${t.idPhoto?`<img src="${t.idPhoto}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const tt=db.teachers.find(x=>x.id==='${t.id}'); tt.idPhoto=url; save(); openTeacherProfileModal('${t.id}'); })">
+        ${t.idPhoto?`<img src="${esc(t.idPhoto)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const tt=db.teachers.find(x=>x.id==='${escJs(t.id)}'); tt.idPhoto=url; save(); openTeacherProfileModal('${escJs(t.id)}'); })">
       </div>
     </div>
     <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:16px;">
-      <div class="card c-info"><div class="label">تاریخ آغاز قرارداد</div><div class="value info" style="font-size:14px;">${t.contractStart?toJalali(t.contractStart):'-'}</div></div>
-      <div class="card c-info"><div class="label">تاریخ پایان قرارداد</div><div class="value info" style="font-size:14px;">${t.contractEnd?toJalali(t.contractEnd):'نامشخص'}</div></div>
-      <div class="card c-income"><div class="label">نرخ کامیابی شاگردها</div><div class="value income" style="font-size:14px;">${stats.rate===null?'-':faDigits(stats.rate)+'٪ ('+faDigits(stats.pass)+'/'+faDigits(stats.total)+')'}</div></div>
+      <div class="card c-info"><div class="label">تاریخ آغاز قرارداد</div><div class="value info" style="font-size:14px;">${esc(t.contractStart?toJalali(t.contractStart):'-')}</div></div>
+      <div class="card c-info"><div class="label">تاریخ پایان قرارداد</div><div class="value info" style="font-size:14px;">${esc(t.contractEnd?toJalali(t.contractEnd):'نامشخص')}</div></div>
+      <div class="card c-income"><div class="label">نرخ کامیابی شاگردها</div><div class="value income" style="font-size:14px;">${esc(stats.rate===null?'-':faDigits(stats.rate)+'٪ ('+faDigits(stats.pass)+'/'+faDigits(stats.total)+')')}</div></div>
     </div>
 
     <div class="sectiontitle">سابقهٔ صنف‌های تدریس‌شده</div>
@@ -1753,25 +1935,45 @@ function openTeacherProfileModal(teacherId){
 
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">بستن</button>
-      <button class="btn" onclick="closeModal(); openTeacherModal('${t.id}');">ویرایش اطلاعات</button>
+      <button class="btn" onclick="closeModal(); openTeacherModal('${escJs(t.id)}');">ویرایش اطلاعات</button>
     </div>
   `, {wide:true});
 }
 
 /* ---------------- Teacher monthly salary logic ----------------
-   Each teacher has a pre-agreed rate (payAmount).
+   Each teacher has a pre-agreed rate (payAmount). Months are Afghan calendar
+   months (حمل، ثور، …), see dateInMonth().
    - "به ازای هر صنف (ماهانه)": rate × تعداد صنف‌هایی که مدرس در آن ماه داشته
      (هر صنف ۶ روز در هفته برگزار می‌شود و هر دوره در حدود یک ماه تمام می‌شود،
      پس هر صنف که در آن ماه آغاز شده یک واحد حساب می‌شود).
    - "ماهانه ثابت": مبلغ ثابت، مستقل از تعداد صنف‌ها.
+   - "درصد شهریه": درصدی از شهریهٔ جمع‌آوری‌شدهٔ صنف‌های مدرس در آن ماه.
+   - PAY_HOURLY و PAY_FIXED_PCT: پایین‌تر توضیح داده شده‌اند.
    از این مبلغ ناخالص، مانده پیش‌پرداخت‌های تسویه‌نشدهٔ آن مدرس کسر می‌شود. */
+/* Salaries run by Afghan (Solar Hijri) calendar month: a salary period is
+   { y: Hijri year, m: 1–12 (1 = Hamal) }. */
 function dateInMonth(dateStr, y, m){
   if(!dateStr) return false;
-  const d = new Date(dateStr+'T00:00:00');
-  return d.getFullYear()===y && d.getMonth()===m;
+  const p = g2jParts(dateStr);
+  return p[0]===y && p[1]===m;
 }
+function currentSalaryPeriod(){ const p = g2jParts(todayISO()); return { y:p[0], m:p[1] }; }
+function salaryPeriodLabel(y, m){ return `${AFG_MONTHS[m-1]} ${faDigits(y)}`; }
+/* The month shown on the payroll panel (defaults to the current month). */
+let payrollPeriod = null;
+function getPayrollPeriod(){ return payrollPeriod || currentSalaryPeriod(); }
+function setPayrollPeriod(value){
+  const [y, m] = String(value).split('-').map(Number);
+  payrollPeriod = (y && m) ? { y, m } : null;
+  renderTeacherAdvances();
+}
+/* Salary expenses already recorded for a person and period. */
+function salaryPaymentsFor(teacherId, y, m){
+  return db.expenses.filter(e=>e.teacherId===teacherId && e.salaryPeriodJY===y && e.salaryPeriodJM===m);
+}
+/* Classes a teacher started in a month; a two-teacher class counts as ½. */
 function teacherClassCountInMonth(teacherId, y, m){
-  return db.classes.filter(c=>c.teacherId===teacherId && dateInMonth(c.startDate, y, m)).length;
+  return db.classes.filter(c=>dateInMonth(c.startDate, y, m)).reduce((n,c)=> n + classPayShare(c, teacherId), 0);
 }
 /* Fees actually collected (paid) for a class — total, or within a given Gregorian month (by registerDate) */
 function classFeesCollected(classId){
@@ -1780,15 +1982,111 @@ function classFeesCollected(classId){
 function classFeesCollectedInMonth(classId, y, m){
   return db.students.filter(s=>s.classId===classId && dateInMonth(s.registerDate, y, m)).reduce((sum,s)=>sum+(Number(s.paidAmount)||0),0);
 }
-const PAY_TYPES = ['به ازای هر صنف (ماهانه)', 'ماهانه ثابت', 'درصد شهریه'];
-function teacherGrossSalary(t, y, m){
-  if(t.payType==='ماهانه ثابت') return Number(t.payAmount)||0;
-  if(t.payType==='درصد شهریه'){
-    const pct = Number(t.payAmount)||0;
-    const collected = teacherClassesList(t.id).reduce((s,c)=> s + classFeesCollectedInMonth(c.id, y, m), 0);
-    return Math.round(collected * pct / 100);
-  }
-  return (Number(t.payAmount)||0) * teacherClassCountInMonth(t.id, y, m);
+/* HADAF's salary types (stored in teacher.payType):
+   1. PAY_PCT        payAmount% of the fees collected that month for their classes.
+   2. PAY_FIXED      a fixed monthly salary (payAmount), whatever the classes.
+   3. PAY_HOURLY     hourly: payAmount a month for `dailyHours` hours a day, so the
+                     hourly rate is payAmount / dailyHours (12,000 for 4 h = 3,000 an
+                     hour). Hours beyond dailyHours on a day are paid at that rate;
+                     hours are entered on the personnel discipline page
+                     (teacherAttendance[].hours[teacherId]). Short days are not deducted.
+   4. PAY_FIXED_PCT  a fixed monthly salary (payAmount, non-teaching work) plus
+                     payPercent% of the fees collected that month for their classes.
+   5. PAY_PER_CLASS  a fixed amount (payAmount) for each class started that month.
+   In every type a two-teacher class counts as half (see classPayShare). */
+const PAY_PCT = 'درصد شهریه';
+const PAY_FIXED = 'ماهانه ثابت';
+const PAY_HOURLY = 'ساعتی';
+const PAY_FIXED_PCT = 'ثابت ماهانه + درصد شهریه';
+const PAY_PER_CLASS = 'به ازای هر صنف (ماهانه)';
+const PAY_TYPES = [PAY_PCT, PAY_FIXED, PAY_HOURLY, PAY_FIXED_PCT, PAY_PER_CLASS];
+const PAY_TYPE_LABELS = {
+  [PAY_PCT]: '۱. درصد از شهریهٔ جمع‌آوری‌شدهٔ صنف‌ها',
+  [PAY_FIXED]: '۲. حقوق ثابت ماهانه',
+  [PAY_HOURLY]: '۳. ساعتی (بر اساس ساعات کار روزانه)',
+  [PAY_FIXED_PCT]: '۴. حقوق ثابت ماهانه + درصد شهریهٔ صنف‌ها',
+  [PAY_PER_CLASS]: '۵. مبلغ ثابت به ازای هر صنف در ماه',
+};
+function payTypeLabel(t){ return t && t.payType ? (PAY_TYPE_LABELS[t.payType] || t.payType) : 'تعیین نشده'; }
+/* True when no (known) salary type has been chosen yet, e.g. a teacher added with «+ مدرس». */
+function isLegacyPayType(t){ return !t.payType || !PAY_TYPES.includes(t.payType); }
+/* Hourly rate for PAY_HOURLY: the monthly amount spread over the agreed daily hours. */
+function teacherHourlyRate(t){
+  const h = Number(t.dailyHours)||0;
+  return h>0 ? Math.round((Number(t.payAmount)||0) / h) : 0;
+}
+/* Fees collected in a month that count towards a teacher's percentage: half of a
+   two-teacher class's fees go to each of its teachers. */
+function teacherCollectedInMonth(teacherId, y, m){
+  return teacherClassesList(teacherId).reduce((s,c)=> s + classFeesCollectedInMonth(c.id, y, m) * classPayShare(c, teacherId), 0);
+}
+/* Hourly teachers: the monthly salary pays for the agreed hours every working day
+   (26 a month, Sat–Thu). In a two-teacher class the sessions the other teacher
+   takes aren't theirs, so that time is deducted — sessions × session hours ×
+   hourly rate / 26, i.e. half of the class. This applies to every two-teacher
+   class, inside or outside their agreed hours. */
+const WORKING_DAYS_PER_MONTH = 26;
+function teacherSharedClassDeduction(t, y, m){
+  const items = [];
+  if(t.payType!==PAY_HOURLY) return { amount:0, items };
+  const rate = teacherHourlyRate(t);
+  teacherClassesList(t.id).filter(isSharedClass).forEach(c=>{
+    const otherSessions = classSessionDates(c).filter(d=>dateInMonth(d, y, m) && classTeacherOnDate(c, d)!==t.id).length;
+    const hours = classSessionHours(c);
+    const amount = Math.round(otherSessions * hours * rate / WORKING_DAYS_PER_MONTH);
+    if(otherSessions) items.push({ classId:c.id, sessions:otherSessions, hours, amount });
+  });
+  return { amount: items.reduce((s,i)=>s+i.amount,0), items };
+}
+/* Overtime for PAY_HOURLY staff in a month: one entry per day with recorded hours. */
+function teacherOvertimeInMonth(t, y, m){
+  const agreed = Number(t.dailyHours)||0, rate = teacherHourlyRate(t);
+  const days = [];
+  (db.teacherAttendance||[]).forEach(r=>{
+    if(!r.hours || r.hours[t.id]===undefined || !dateInMonth(r.date, y, m)) return;
+    const worked = Number(r.hours[t.id])||0;
+    const extra = agreed>0 ? Math.max(0, worked - agreed) : 0;
+    days.push({ date:r.date, worked, extra, amount: Math.round(extra*rate) });
+  });
+  days.sort((a,b)=>a.date.localeCompare(b.date));
+  return { days, hours: days.reduce((s,d)=>s+d.extra,0), amount: days.reduce((s,d)=>s+d.amount,0) };
+}
+/* Parts of a month's gross salary, so pages can show where the total comes from. */
+function teacherSalaryBreakdown(t, y, m){
+  const amt = Number(t.payAmount)||0;
+  const b = { fixed:0, perClass:0, percent:0, overtime:0, overtimeHours:0, sharedDeduction:0, total:0 };
+  if(t.payType===PAY_FIXED) b.fixed = amt;
+  else if(t.payType===PAY_PCT) b.percent = Math.round(teacherCollectedInMonth(t.id, y, m) * amt / 100);
+  else if(t.payType===PAY_HOURLY){ const o = teacherOvertimeInMonth(t, y, m); b.fixed = amt; b.overtime = o.amount; b.overtimeHours = o.hours; b.sharedDeduction = teacherSharedClassDeduction(t, y, m).amount; }
+  else if(t.payType===PAY_FIXED_PCT){ b.fixed = amt; b.percent = Math.round(teacherCollectedInMonth(t.id, y, m) * (Number(t.payPercent)||0) / 100); }
+  else b.perClass = Math.round(amt * teacherClassCountInMonth(t.id, y, m));
+  b.total = Math.max(0, b.fixed + b.perClass + b.percent + b.overtime - b.sharedDeduction);
+  return b;
+}
+function teacherGrossSalary(t, y, m){ return teacherSalaryBreakdown(t, y, m).total; }
+/* The pieces of a month's salary, e.g. «ثابت ۸,۰۰۰» and «درصد شهریه ۱,۰۰۰». */
+function salaryBreakdownParts(t, bd){
+  return [
+    bd.fixed && ((t.payType===PAY_HOURLY ? 'حقوق ساعات توافق‌شده ' : 'ثابت ') + afn(bd.fixed)),
+    bd.perClass && ('صنف‌ها ' + afn(bd.perClass)),
+    bd.percent && ('درصد شهریه ' + afn(bd.percent)),
+    bd.overtime && (`${faDigits(bd.overtimeHours)} ساعت اضافه ` + afn(bd.overtime)),
+  ].filter(Boolean);
+}
+/* Worth showing only when the salary has more than one piece or a deduction. */
+function salaryHasBreakdown(t, bd){ return salaryBreakdownParts(t, bd).length>1 || !!bd.sharedDeduction; }
+/* One line: pieces joined by «+», then the two-teacher class deduction with «−». */
+function salaryBreakdownText(t, bd){
+  return salaryBreakdownParts(t, bd).join(' + ') + (bd.sharedDeduction ? ' − صنف دو مدرسه ' + afn(bd.sharedDeduction) : '');
+}
+/* Short description of a person's pay agreement, e.g. for tables. */
+function teacherPayLabel(t){
+  if(t.payType===PAY_HOURLY) return `${afn(t.payAmount)} در ماه برای ${faDigits(t.dailyHours||0)} ساعت در روز (هر ساعت ${afn(teacherHourlyRate(t))})`;
+  if(t.payType===PAY_FIXED_PCT) return `${afn(t.payAmount)} + ${faDigits(t.payPercent||0)}٪ شهریه`;
+  if(!t.payAmount) return '-';
+  if(t.payType===PAY_PCT) return faDigits(t.payAmount)+'٪ شهریه';
+  if(t.payType===PAY_FIXED) return afn(t.payAmount)+' در ماه';
+  return afn(t.payAmount)+' برای هر صنف';
 }
 function teacherAdvanceBalance(teacherId){
   return db.teacherAdvances.filter(a=>a.teacherId===teacherId && !a.settled).reduce((s,a)=>s+(Number(a.amount)||0),0);
@@ -1808,9 +2106,9 @@ function openAdvanceModal(id){
     <h3>${a?'ویرایش پیش‌پرداخت':'پیش‌پرداخت جدید'}</h3>
     <p class="sub">مبلغی که از قبل به مدرس پرداخت شده و باید از حقوق ماهانهٔ او کسر شود</p>
     <div class="field"><label>مدرس</label><select id="f-adv-teacher">${teacherOptionsHtml(a?a.teacherId:'')}</select></div>
-    <div class="field"><label>مبلغ (افغانی)</label><input id="f-adv-amount" class="money-input" value="${a&&a.amount?numFmt(a.amount):''}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
+    <div class="field"><label>مبلغ (افغانی)</label><input id="f-adv-amount" class="money-input" value="${esc(a&&a.amount?numFmt(a.amount):'')}" oninput="formatMoneyInput(this)" placeholder="۰"></div>
     <div class="field"><label>تاریخ</label>${jalaliPicker('f-adv-date', a?a.date:null)}</div>
-    <div class="field"><label>توضیحات</label><input id="f-adv-note" value="${a?a.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-adv-note" value="${esc(a?a.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveAdvance(${a?`'${a.id}'`:'null'})">ذخیره</button>
@@ -1841,18 +2139,23 @@ function toggleAdvanceSettled(id, checked){
 /* ---------------- Salary payout action ---------------- */
 function paySalary(teacherId){
   const t = db.teachers.find(x=>x.id===teacherId); if(!t) return;
-  const now = new Date();
-  const gross = teacherGrossSalary(t, now.getFullYear(), now.getMonth());
+  const { y, m } = getPayrollPeriod();
+  const period = salaryPeriodLabel(y, m);
+  const gross = teacherGrossSalary(t, y, m);
   const tax = teacherSalaryTax(gross);
   const advance = teacherAdvanceBalance(teacherId);
   const net = Math.max(0, gross - tax - advance);
-  if(net<=0 && gross<=0){ alert('برای این مدرس در ماه جاری صنفی ثبت نشده یا حقوق ثابتی تعریف نشده است.'); return; }
-  if(!confirm(`حقوق خالص ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
+  if(net<=0 && gross<=0){ alert(`برای این مدرس در ماه ${period} صنفی ثبت نشده یا حقوق ثابتی تعریف نشده است.`); return; }
+  const already = salaryPaymentsFor(teacherId, y, m);
+  if(already.length && !confirm(`برای «${t.name}» حقوق ماه ${period} قبلاً ثبت شده است (${afn(already.reduce((s,e)=>s+(Number(e.amount)||0),0))}). دوباره ثبت شود؟`)) return;
+  const bd = teacherSalaryBreakdown(t, y, m);
+  const partsText = salaryBreakdownText(t, bd);
+  if(!confirm(`حقوق خالص ماه ${period}: ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}${salaryHasBreakdown(t, bd)?' = '+partsText:''}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
   db.expenses.unshift({
     id: uid(), branch: BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
-    note: `حقوق ${t.name} · ${toJalali(todayISO())}`,
-    teacherId: teacherId, salaryGross: gross, salaryTax: tax, salaryTaxPercent: teacherTaxPercent(), salaryAdvance: advance,
-    salaryPeriodY: now.getFullYear(), salaryPeriodM: now.getMonth(),
+    note: `حقوق ${t.name} · ${period}`,
+    teacherId: teacherId, salaryGross: gross, salaryFixed: bd.fixed, salaryPercentShare: bd.percent, salaryOvertime: bd.overtime, salaryOvertimeHours: bd.overtimeHours, salarySharedDeduction: bd.sharedDeduction, salaryTax: tax, salaryTaxPercent: teacherTaxPercent(), salaryAdvance: advance,
+    salaryPeriodJY: y, salaryPeriodJM: m,
   });
   db.teacherAdvances.forEach(a=>{ if(a.teacherId===teacherId && !a.settled) a.settled = true; });
   logAction('پرداخت حقوق', 'پرسنل', `${t.name} · خالص ${afn(net)}`);
@@ -1865,15 +2168,15 @@ function openDonationModal(id){
   openModal(`
     <h3>${d?'ویرایش درآمد':'درآمد جدید'}</h3>
     <p class="hint" style="margin-top:-6px;">توجه: درآمد فروش کتاب و کارت شاگردی اینجا ثبت نشود · آن‌ها به‌صورت خودکار از صفحهٔ «کتاب و مطبوعات» محاسبه می‌شوند.</p>
-    <div class="field"><label>نام منبع درآمد (اختیاری)</label><input id="f-d-donor" value="${d?d.donorName||'':''}" placeholder="سایر"></div>
+    <div class="field"><label>نام منبع درآمد (اختیاری)</label><input id="f-d-donor" value="${esc(d?d.donorName||'':'')}" placeholder="سایر"></div>
     <div class="field-row">
-      <div class="field"><label>مبلغ</label><input id="f-d-amount" class="money-input" value="${d&&d.amount?numFmt(d.amount):''}" oninput="formatMoneyInput(this); updateDonationCalc();"></div>
-      <div class="field"><label>درصد تخفیف</label><input id="f-d-discount" type="number" min="0" max="100" value="${d&&d.discountPercent?d.discountPercent:0}" oninput="updateDonationCalc()"></div>
+      <div class="field"><label>مبلغ</label><input id="f-d-amount" class="money-input" value="${esc(d&&d.amount?numFmt(d.amount):'')}" oninput="formatMoneyInput(this); updateDonationCalc();"></div>
+      <div class="field"><label>درصد تخفیف</label><input id="f-d-discount" type="number" min="0" max="100" value="${esc(d&&d.discountPercent?d.discountPercent:0)}" oninput="updateDonationCalc()"></div>
     </div>
     <div class="calc-box"><span>مبلغ نهایی بعد از تخفیف</span><b id="f-d-net-display">${afn(netAfterDiscount(d?d.amount:0, d?d.discountPercent:0))}</b></div>
     <div class="field" style="margin-top:12px;"><label>روش</label><select id="f-d-method">${categoryOptionsHtml(DONATION_METHODS, d?d.method:DONATION_METHODS[0])}</select></div>
     <div class="field"><label>تاریخ</label>${jalaliPicker('f-d-date', d?d.date:null)}</div>
-    <div class="field"><label>توضیحات</label><input id="f-d-note" value="${d?d.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-d-note" value="${esc(d?d.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveDonation(${d?`'${d.id}'`:'null'})">ذخیره</button>
@@ -1913,9 +2216,9 @@ function openExpenseModal(id){
       <div class="field"><label>شعبه</label><select id="f-e-branch">${categoryOptionsHtml(BRANCHES, e?e.branch:BRANCHES[0])}</select></div>
       <div class="field"><label>دسته</label><select id="f-e-category">${categoryOptionsHtml(EXPENSE_CATEGORIES, e?e.category:EXPENSE_CATEGORIES[0])}</select></div>
     </div>
-    <div class="field"><label>مبلغ</label><input id="f-e-amount" class="money-input" value="${e&&e.amount?numFmt(e.amount):''}" oninput="formatMoneyInput(this)"></div>
+    <div class="field"><label>مبلغ</label><input id="f-e-amount" class="money-input" value="${esc(e&&e.amount?numFmt(e.amount):'')}" oninput="formatMoneyInput(this)"></div>
     <div class="field"><label>تاریخ</label>${jalaliPicker('f-e-date', e?e.date:null)}</div>
-    <div class="field"><label>توضیحات</label><input id="f-e-note" value="${e?e.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-e-note" value="${esc(e?e.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveExpense(${e?`'${e.id}'`:'null'})">ذخیره</button>
@@ -1945,10 +2248,10 @@ function openProjectModal(id){
     <h3>${p?'ویرایش پروژه':'پروژهٔ جدید'}</h3>
     <p class="sub">فعالیت یا برنامهٔ بزرگ‌تر آموزشگاه را ثبت کنید · پیشرفت آن از خودِ لیست پروژه‌ها قابل ثبت است</p>
     <div class="field-row">
-      <div class="field"><label>نام پروژه</label><input id="f-pr-name" value="${p?p.name:''}"></div>
+      <div class="field"><label>نام پروژه</label><input id="f-pr-name" value="${esc(p?p.name:'')}"></div>
       <div class="field"><label>دسته</label><select id="f-pr-category">${categoryOptionsHtml(PROJECT_CATEGORIES, p?p.category:PROJECT_CATEGORIES[0])}</select></div>
     </div>
-    <div class="field"><label>مسئول پروژه</label><input id="f-pr-lead" value="${p?p.lead||'':''}" placeholder="نام مسئول یا داوطلب"></div>
+    <div class="field"><label>مسئول پروژه</label><input id="f-pr-lead" value="${esc(p?p.lead||'':'')}" placeholder="نام مسئول یا داوطلب"></div>
     <div class="field"><label>تاریخ آغاز</label>${jalaliPicker('f-pr-start', p?p.startDate:null)}</div>
     <div class="field">
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -1959,7 +2262,7 @@ function openProjectModal(id){
         ${jalaliPicker('f-pr-end', p?p.endDate:null)}
       </div>
     </div>
-    <div class="field"><label>هدف/توضیحات</label><input id="f-pr-note" value="${p?p.note||'':''}"></div>
+    <div class="field"><label>هدف/توضیحات</label><input id="f-pr-note" value="${esc(p?p.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveProject(${p?`'${p.id}'`:'null'})">ذخیره</button>
@@ -1995,8 +2298,8 @@ function openMeetingModal(id){
   openModal(`
     <h3>${m?'ویرایش جلسه':'جلسهٔ جدید'}</h3>
     <div class="field"><label>تاریخ جلسه</label>${jalaliPicker('f-mt-date', m?m.date:null)}</div>
-    <div class="field"><label>حاضرین</label><input id="f-mt-attendees" value="${m?m.attendees||'':''}" placeholder="نام‌ها را با ویرگول جدا کنید"></div>
-    <div class="field"><label>یادداشت‌ها / صورت‌جلسه</label><textarea id="f-mt-notes" rows="4">${m?m.notes||'':''}</textarea></div>
+    <div class="field"><label>حاضرین</label><input id="f-mt-attendees" value="${esc(m?m.attendees||'':'')}" placeholder="نام‌ها را با ویرگول جدا کنید"></div>
+    <div class="field"><label>یادداشت‌ها / صورت‌جلسه</label><textarea id="f-mt-notes" rows="4">${esc(m?m.notes||'':'')}</textarea></div>
     <div class="sectiontitle">کارهای هفتهٔ آینده</div>
     <div id="mt-tasks-list"></div>
     <button type="button" class="btn ghost small" onclick="addTaskRow()">+ افزودن کار</button>
@@ -2013,8 +2316,8 @@ function renderTaskRows(){
   el.innerHTML = pendingMeetingTasks.map((t,i)=>`
     <div class="task-row">
       <input type="checkbox" ${t.done?'checked':''} onchange="pendingMeetingTasks[${i}].done=this.checked;">
-      <input type="text" value="${t.text||''}" placeholder="شرح کار" onchange="pendingMeetingTasks[${i}].text=this.value;">
-      <input type="text" class="task-assignee" value="${t.assignee||''}" placeholder="مسئول" onchange="pendingMeetingTasks[${i}].assignee=this.value;">
+      <input type="text" value="${esc(t.text||'')}" placeholder="شرح کار" onchange="pendingMeetingTasks[${i}].text=this.value;">
+      <input type="text" class="task-assignee" value="${esc(t.assignee||'')}" placeholder="مسئول" onchange="pendingMeetingTasks[${i}].assignee=this.value;">
       <button type="button" class="icon-btn" onclick="removeTaskRow(${i})" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
     </div>
   `).join('') || '<div class="hint">هنوز کاری افزوده نشده.</div>';
@@ -2065,7 +2368,7 @@ function renderDashboard(){
   document.getElementById('dash-recent-students-empty').style.display = db.students.length? 'none':'block';
   document.getElementById('dash-recent-students').innerHTML = recentStudents.map(s=>{
     const st = studentStatus(s);
-    return `<tr><td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${toJalali(s.registerDate)}</td><td><span class="tag ${studentStatusTagClass(st)}">${st}</span></td></tr>`;
+    return `<tr><td>${esc(profileName(s.profileId))}</td><td>${esc(className(s.classId))}</td><td>${toJalali(s.registerDate)}</td><td><span class="tag ${studentStatusTagClass(st)}">${esc(st)}</span></td></tr>`;
   }).join('');
   renderPaginationControls('dash-recent-students-pagination', 'dash-recent-students', rsPages, 'renderDashboard');
 
@@ -2073,7 +2376,7 @@ function renderDashboard(){
   const { pageItems: unpaid, totalPages: unpaidPages } = paginateList('dash-unpaid', unpaidAll);
   document.getElementById('dash-unpaid-empty').style.display = unpaidAll.length? 'none':'block';
   document.getElementById('dash-unpaid').innerHTML = unpaid.map(s=>`
-    <tr><td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${profileGuardianName(s.profileId)||'-'} ${profileGuardianPhone(s.profileId)?'· '+profileGuardianPhone(s.profileId):''}</td>
+    <tr><td>${esc(profileName(s.profileId))}</td><td>${esc(className(s.classId))}</td><td>${esc(profileGuardianName(s.profileId)||'-')} ${esc(profileGuardianPhone(s.profileId)?'· '+profileGuardianPhone(s.profileId):'')}</td>
     <td class="num"><span class="tag cost">${afn(studentRemaining(s))}</span></td></tr>
   `).join('');
   renderPaginationControls('dash-unpaid-pagination', 'dash-unpaid', unpaidPages, 'renderDashboard');
@@ -2082,16 +2385,16 @@ function renderDashboard(){
   document.getElementById('dash-classes-empty').style.display = db.classes.length? 'none':'block';
   document.getElementById('dash-classes').innerHTML = classesPage.map(c=>{
     const st = classStatus(c);
-    return `<tr><td>${c.name||c.category}</td><td>${teacherName(c.teacherId)}</td><td>${toJalali(c.startDate)}</td><td>${c.endDate?toJalali(c.endDate):'نامشخص'}</td>
-    <td class="num">${faDigits(classEnrolledCount(c.id))}${c.capacity?'/'+faDigits(c.capacity):''}</td>
-    <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td></tr>`;
+    return `<tr><td>${esc(c.name||c.category)}</td><td>${esc(classTeachersLabel(c))}</td><td>${toJalali(c.startDate)}</td><td>${toJalali(classEndDate(c))}</td>
+    <td class="num">${faDigits(classEnrolledCount(c.id))}${esc(c.capacity?'/'+faDigits(c.capacity):'')}</td>
+    <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td></tr>`;
   }).join('');
   renderPaginationControls('dash-classes-pagination', 'dash-classes', classesPages, 'renderDashboard');
 
   const { pageItems: recentDonations, totalPages: donPages } = paginateList('dash-recent-donations', db.donations);
   document.getElementById('dash-recent-donations-empty').style.display = db.donations.length? 'none':'block';
   document.getElementById('dash-recent-donations').innerHTML = recentDonations.map(d=>`
-    <tr><td>${d.donorName}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${d.method}</td></tr>
+    <tr><td>${esc(d.donorName)}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${esc(d.method)}</td></tr>
   `).join('');
   renderPaginationControls('dash-recent-donations-pagination', 'dash-recent-donations', donPages, 'renderDashboard');
 }
@@ -2101,7 +2404,7 @@ let classBranchFilter = 'all';
 function renderClassesFilterChips(){
   document.getElementById('classes-filters').innerHTML =
     `<button class="chip ${classBranchFilter==='all'?'active':''}" data-branch="all">همهٔ شعبه‌ها</button>` +
-    BRANCHES.map(b=>`<button class="chip ${classBranchFilter===b?'active':''}" data-branch="${b}">${b}</button>`).join('');
+    BRANCHES.map(b=>`<button class="chip ${classBranchFilter===b?'active':''}" data-branch="${esc(b)}">${esc(b)}</button>`).join('');
 }
 document.getElementById('classes-filters').addEventListener('click', e=>{
   const chip = e.target.closest('.chip'); if(!chip) return;
@@ -2113,7 +2416,7 @@ document.getElementById('classes-filters').addEventListener('click', e=>{
 function renderClasses(){
   let source = db.classes;
   // Teachers see only their own classes (across all branches); others see all
-  if(currentRole==='teacher') source = source.filter(c=>c.teacherId===currentTeacherId);
+  if(currentRole==='teacher') source = source.filter(c=>classHasTeacher(c, currentTeacherId));
   const fullList = classBranchFilter==='all' ? source : source.filter(c=>c.branch===classBranchFilter);
   const { pageItems: list, totalPages } = paginateList('classes', fullList);
   document.getElementById('classes-empty').style.display = fullList.length? 'none':'block';
@@ -2121,16 +2424,16 @@ function renderClasses(){
     const st = classStatus(c);
     const enrolled = classEnrolledCount(c.id);
     return `<tr>
-      <td>${c.name||'-'}</td><td>${c.branch||'-'}</td><td>${c.category}</td><td>${teacherName(c.teacherId)}</td><td>${c.mode||'-'}</td>
-      <td style="white-space:nowrap;">${classTimeLabel(c)}</td>
-      <td>${toJalali(c.startDate)}</td><td>${c.endDate?toJalali(c.endDate):'نامشخص'}</td>
-      <td class="num">${c.capacity?faDigits(c.capacity):'-'}</td>
+      <td>${esc(c.name||'-')}</td><td>${esc(c.branch||'-')}</td><td>${esc(c.category)}</td><td>${esc(classTeachersLabel(c))}${isSharedClass(c)?' <span class="tag info">دو مدرسه</span>':''}</td><td>${esc(c.mode||'-')}</td>
+      <td style="white-space:nowrap;">${esc(classTimeLabel(c))}</td>
+      <td>${toJalali(c.startDate)}</td><td>${toJalali(classEndDate(c))}</td>
+      <td class="num">${esc(c.capacity?faDigits(c.capacity):'-')}</td>
       <td class="num">${faDigits(enrolled)}</td>
-      <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td>
+      <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td>
       <td>${progressBarHtml(classTimeProgress(c))}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openClassModal('${c.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteClass('${c.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openClassModal('${escJs(c.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteClass('${escJs(c.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2141,16 +2444,16 @@ function renderClasses(){
 function renderProjects(){
   document.getElementById('projects-empty').style.display = db.projects.length? 'none':'block';
   document.getElementById('projects-table').innerHTML = db.projects.map(p=>{
-    const st = classStatus(p);
+    const st = dateRangeStatus(p);
     return `<tr>
-      <td>${p.name}</td><td>${p.category}</td><td>${p.lead||'-'}</td>
-      <td>${toJalali(p.startDate)}</td><td>${p.endDate?toJalali(p.endDate):'نامشخص'}</td>
-      <td><span class="tag ${classStatusTagClass(st)}">${st}</span></td>
+      <td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.lead||'-')}</td>
+      <td>${toJalali(p.startDate)}</td><td>${esc(p.endDate?toJalali(p.endDate):'نامشخص')}</td>
+      <td><span class="tag ${classStatusTagClass(st)}">${esc(st)}</span></td>
       <td>${progressBarHtml(p.progress||0)}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openProgressModal('project','${p.id}')" title="پیشرفت"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg></button>
-        <button class="icon-btn" onclick="openProjectModal('${p.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteProject('${p.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openProgressModal('project','${escJs(p.id)}')" title="پیشرفت"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg></button>
+        <button class="icon-btn" onclick="openProjectModal('${escJs(p.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteProject('${escJs(p.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2164,11 +2467,11 @@ function renderMeetings(){
     const done = tasks.filter(t=>t.done).length;
     const notesPreview = (m.notes||'').length>70 ? (m.notes||'').slice(0,70)+'…' : (m.notes||'-');
     return `<tr>
-      <td>${toJalali(m.date)}</td><td>${m.attendees||'-'}</td><td>${notesPreview}</td>
+      <td>${toJalali(m.date)}</td><td>${esc(m.attendees||'-')}</td><td>${esc(notesPreview)}</td>
       <td class="num">${faDigits(done)}/${faDigits(tasks.length)}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openMeetingModal('${m.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteMeeting('${m.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openMeetingModal('${escJs(m.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteMeeting('${escJs(m.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2178,9 +2481,9 @@ function renderMeetings(){
   document.getElementById('open-tasks-empty').style.display = openTasks.length? 'none':'block';
   document.getElementById('open-tasks-table').innerHTML = openTasks.map(t=>`
     <tr>
-      <td>${t.text}</td><td>${t.assignee||'-'}</td><td>${toJalali(t.meetingDate)}</td>
+      <td>${esc(t.text)}</td><td>${esc(t.assignee||'-')}</td><td>${toJalali(t.meetingDate)}</td>
       <td><label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" style="width:auto;" onchange="toggleOpenTask('${t.meetingId}','${t.id}',this.checked)"> انجام شد
+        <input type="checkbox" style="width:auto;" onchange="toggleOpenTask('${escJs(t.meetingId)}','${escJs(t.id)}',this.checked)"> انجام شد
       </label></td>
     </tr>
   `).join('');
@@ -2217,16 +2520,17 @@ function renderStudents(){
   document.getElementById('students-table').innerHTML = pageItems.map(s=>{
     const st = studentStatus(s);
     return `<tr>
-      <td><span class="code-badge" onclick="openStudentProfileModal('${s.profileId}')">${profileCode(s.profileId)}</span></td>
-      <td>${profileName(s.profileId)}</td><td>${profileGrade(s.profileId)||'-'}</td><td>${profileGuardianName(s.profileId)||'-'}</td><td>${profileGuardianPhone(s.profileId)||'-'}</td>
-      <td>${className(s.classId)}</td><td>${classBranch(s.classId)}</td><td>${toJalali(s.registerDate)}</td>
-      <td class="num">${afn(s.feeAmount)}</td><td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${studentTotalDiscountPercent(s)?faDigits(studentTotalDiscountPercent(s))+'٪':'-'}</td><td class="num">${afn(s.paidAmount)}</td>
+      <td><span class="code-badge" onclick="openStudentProfileModal('${escJs(s.profileId)}')">${esc(profileCode(s.profileId))}</span></td>
+      <td>${esc(profileName(s.profileId))}</td><td>${esc(profileGrade(s.profileId)||'-')}</td><td>${esc(profileGuardianName(s.profileId)||'-')}</td><td>${esc(profileGuardianPhone(s.profileId)||'-')}</td>
+      <td>${esc(className(s.classId))}</td><td>${esc(classBranch(s.classId))}</td><td>${toJalali(s.registerDate)}</td>
+      <td class="num">${afn(s.feeAmount)}</td><td class="num" title="دستی: ${faDigits(s.discountPercent||0)}٪ · معرفی: ${faDigits(s.referralDiscountPercent||0)}٪ · خانوادگی: ${faDigits(s.familyDiscountPercent||0)}٪">${esc(studentTotalDiscountPercent(s)?faDigits(studentTotalDiscountPercent(s))+'٪':'-')}</td><td class="num">${afn(s.paidAmount)}</td>
       <td class="num">${afn(studentRemaining(s))}</td>
-      <td><span class="tag ${studentStatusTagClass(st)}">${st}</span></td>
-      <td>${s.result?`<span class="tag ${resultTagClass(s.result)}">${s.result}</span>`:'<span class="tag info">در حال آموزش</span>'}</td>
+      <td><span class="tag ${studentStatusTagClass(st)}">${esc(st)}</span></td>
+      <td>${s.result?`<span class="tag ${resultTagClass(s.result)}">${esc(s.result)}</span>`:'<span class="tag info">در حال آموزش</span>'}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openStudentModal('${s.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteStudent('${s.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="printStudentProfile('${escJs(s.profileId)}','${escJs(s.id)}')" title="چاپ رسید این ثبت‌نام"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg></button>
+        <button class="icon-btn" onclick="openStudentModal('${escJs(s.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteStudent('${escJs(s.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2248,14 +2552,16 @@ function renderTeachers(){
   document.getElementById('teachers-table').innerHTML = pageItems.map(t=>{
     const classes = teacherClassesList(t.id);
     const names = classes.map(c=>c.name||c.category).join('، ') || '-';
-    const payLabel = t.payAmount ? `${t.payType==='درصد شهریه' ? faDigits(t.payAmount)+'٪' : afn(t.payAmount)} <span style="color:var(--text-faint);">(${t.payType||'-'})</span>` : '-';
+    const payLabel = isLegacyPayType(t)
+      ? `<span class="tag cost" title="نوع پرداخت را انتخاب کنید">${esc(payTypeLabel(t))}</span>${t.payAmount?` <span style="color:var(--text-faint);">${esc(teacherPayLabel(t))}</span>`:''}`
+      : `${esc(teacherPayLabel(t))} <span style="color:var(--text-faint);">(${esc(payTypeLabel(t))})</span>`;
     return `<tr>
-      <td><span class="code-badge" onclick="openTeacherProfileModal('${t.id}')">${t.code||'-'}</span></td>
-      <td>${t.name}</td><td><span class="tag info">${t.role||'مدرس'}</span></td><td>${t.phone||'-'}</td><td>${t.subjects||'-'}</td><td class="num">${payLabel}</td>
-      <td class="num">${faDigits(classes.length)}</td><td>${names}</td>
+      <td><span class="code-badge" onclick="openTeacherProfileModal('${escJs(t.id)}')">${esc(t.code||'-')}</span></td>
+      <td>${esc(t.name)}</td><td><span class="tag info">${esc(t.role||'مدرس')}</span></td><td>${esc(t.phone||'-')}</td><td>${esc(t.subjects||'-')}</td><td class="num">${payLabel}</td>
+      <td class="num">${faDigits(classes.length)}</td><td>${esc(names)}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openTeacherModal('${t.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteTeacher('${t.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openTeacherModal('${escJs(t.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteTeacher('${escJs(t.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2264,36 +2570,46 @@ function renderTeachers(){
 
 /* ---------------- Render: Payroll & Teacher Advances ---------------- */
 function renderTeacherAdvances(){
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
+  const { y, m } = getPayrollPeriod();
+  const bar = document.getElementById('payroll-period-bar');
+  if(bar){
+    // This month and the 11 before it.
+    const cur = currentSalaryPeriod(), opts = [];
+    for(let i=0;i<12;i++){ let yy=cur.y, mm=cur.m-i; while(mm<1){ mm+=12; yy--; } opts.push([yy,mm]); }
+    bar.innerHTML = `<label style="font-size:12.5px; color:var(--text-dim);">ماه حقوق:
+      <select onchange="setPayrollPeriod(this.value)" style="width:auto; margin-inline-start:6px;">${opts.map(([yy,mm])=>`<option value="${yy}-${mm}" ${yy===y&&mm===m?'selected':''}>${esc(salaryPeriodLabel(yy,mm))}${yy===cur.y&&mm===cur.m?' (ماه جاری)':''}</option>`).join('')}</select></label>`;
+  }
 
   document.getElementById('payroll-empty').style.display = db.teachers.length? 'none':'block';
   document.getElementById('payroll-table').innerHTML = db.teachers.map(t=>{
-    const cnt = (t.payType==='ماهانه ثابت'||t.payType==='درصد شهریه') ? '-' : faDigits(teacherClassCountInMonth(t.id, y, m));
-    const gross = teacherGrossSalary(t, y, m);
+    const bd = teacherSalaryBreakdown(t, y, m);
+    const cnt = t.payType===PAY_HOURLY ? `${faDigits(bd.overtimeHours)} ساعت اضافه`
+      : t.payType===PAY_PER_CLASS ? `${faDigits(teacherClassCountInMonth(t.id, y, m))} صنف` : '-';
+    const gross = bd.total;
+    const partsText = salaryBreakdownText(t, bd);
     const tax = teacherSalaryTax(gross);
     const advBal = teacherAdvanceBalance(t.id);
     const net = teacherNetSalary(t, y, m);
     return `<tr>
-      <td>${t.name}</td><td>${t.payType||'-'}</td><td class="num">${cnt}</td>
-      <td class="num">${afn(gross)}</td><td class="num">${tax?afn(tax):'-'}</td><td class="num">${advBal?afn(advBal):'-'}</td>
+      <td>${esc(t.name)}</td><td>${isLegacyPayType(t) ? `<span class="tag cost">${esc(payTypeLabel(t))}</span>` : esc(payTypeLabel(t))}</td><td class="num">${esc(cnt)}</td>
+      <td class="num" title="${esc(partsText)}">${afn(gross)}${salaryHasBreakdown(t, bd)?`<div style="font-size:10.5px; color:var(--text-faint);">${esc(partsText)}</div>`:''}</td><td class="num">${esc(tax?afn(tax):'-')}</td><td class="num">${esc(advBal?afn(advBal):'-')}</td>
       <td class="num"><b style="color:var(--gold-soft);">${afn(net)}</b></td>
-      <td><button class="btn ghost small" onclick="paySalary('${t.id}')">ثبت پرداخت</button></td>
+      <td>${salaryPaymentsFor(t.id, y, m).length ? '<span class="tag income" style="margin-inline-end:6px;">پرداخت‌شده</span>' : ''}<button class="btn ghost small" onclick="paySalary('${escJs(t.id)}')">ثبت پرداخت</button></td>
     </tr>`;
   }).join('');
 
   document.getElementById('advances-empty').style.display = db.teacherAdvances.length? 'none':'block';
   document.getElementById('advances-table').innerHTML = db.teacherAdvances.map(a=>`
     <tr>
-      <td>${teacherName(a.teacherId)}</td><td class="num">${afn(a.amount)}</td><td>${toJalali(a.date)}</td>
+      <td>${esc(teacherName(a.teacherId))}</td><td class="num">${afn(a.amount)}</td><td>${toJalali(a.date)}</td>
       <td><label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" style="width:auto;" ${a.settled?'checked':''} onchange="toggleAdvanceSettled('${a.id}',this.checked)">
+        <input type="checkbox" style="width:auto;" ${a.settled?'checked':''} onchange="toggleAdvanceSettled('${escJs(a.id)}',this.checked)">
         <span class="tag ${a.settled?'income':'cost'}">${a.settled?'تسویه‌شده':'باز'}</span>
       </label></td>
-      <td>${a.note||'-'}</td>
+      <td>${esc(a.note||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openAdvanceModal('${a.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteAdvance('${a.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openAdvanceModal('${escJs(a.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteAdvance('${escJs(a.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>
   `).join('');
@@ -2308,13 +2624,13 @@ function renderSeminars(){
       ? (s.discountPercent>0 ? `${afn(netFee)} <span style="color:var(--text-faint); text-decoration:line-through;">${afn(s.fee)}</span>` : afn(netFee))
       : '-';
     return `<tr>
-      <td>${s.title}</td><td>${s.type}</td><td>${s.location||'-'}</td><td>${teacherName(s.speakerId)}</td>
+      <td>${esc(s.title)}</td><td>${esc(s.type)}</td><td>${esc(s.location||'-')}</td><td>${esc(teacherName(s.speakerId))}</td>
       <td>${toJalali(s.date)}</td><td><span class="tag ${s.isPaid?'cost':'income'}">${s.isPaid?'پولی':'رایگان'}</span></td>
-      <td class="num">${feeCell}</td><td class="num">${s.attendeeCount?faDigits(s.attendeeCount):'-'}</td>
-      <td class="num">${s.isPaid?afn(seminarRevenue(s)):'-'}</td>
+      <td class="num">${feeCell}</td><td class="num">${esc(s.attendeeCount?faDigits(s.attendeeCount):'-')}</td>
+      <td class="num">${esc(s.isPaid?afn(seminarRevenue(s)):'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openSeminarModal('${s.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteSeminar('${s.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openSeminarModal('${escJs(s.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteSeminar('${escJs(s.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2326,10 +2642,10 @@ function renderDonations(){
   const { pageItems, totalPages } = paginateList('donations', db.donations);
   document.getElementById('donations-table').innerHTML = pageItems.map(d=>`
     <tr>
-      <td>${d.donorName}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${d.method}</td><td>${d.note||'-'}</td>
+      <td>${esc(d.donorName)}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${esc(d.method)}</td><td>${esc(d.note||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openDonationModal('${d.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteDonation('${d.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openDonationModal('${escJs(d.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteDonation('${escJs(d.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>
   `).join('');
@@ -2341,7 +2657,7 @@ let expenseBranchFilter = 'all';
 function renderExpensesFilterChips(){
   document.getElementById('expenses-filters').innerHTML =
     `<button class="chip ${expenseBranchFilter==='all'?'active':''}" data-branch="all">همهٔ شعبه‌ها</button>` +
-    BRANCHES.map(b=>`<button class="chip ${expenseBranchFilter===b?'active':''}" data-branch="${b}">${b}</button>`).join('');
+    BRANCHES.map(b=>`<button class="chip ${expenseBranchFilter===b?'active':''}" data-branch="${esc(b)}">${esc(b)}</button>`).join('');
 }
 document.getElementById('expenses-filters').addEventListener('click', e=>{
   const chip = e.target.closest('.chip'); if(!chip) return;
@@ -2361,10 +2677,10 @@ function renderExpenses(){
   document.getElementById('expenses-empty').style.display = list.length? 'none':'block';
   document.getElementById('expenses-table').innerHTML = list.map(e=>`
     <tr>
-      <td>${e.branch||'-'}</td><td><span class="tag cost">${e.category}</span></td><td class="num">${afn(e.amount)}</td><td>${toJalali(e.date)}</td><td>${e.note||'-'}</td>
+      <td>${esc(e.branch||'-')}</td><td><span class="tag cost">${esc(e.category)}</span></td><td class="num">${afn(e.amount)}</td><td>${toJalali(e.date)}</td><td>${esc(e.note||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openExpenseModal('${e.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteExpense('${e.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openExpenseModal('${escJs(e.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteExpense('${escJs(e.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>
   `).join('');
@@ -2372,15 +2688,19 @@ function renderExpenses(){
   const label = expenseBranchFilter==='all' ? 'مجموع کل (همهٔ شعبه‌ها)' : `مجموع ${expenseBranchFilter}`;
   const footEl = document.getElementById('expenses-foot');
   if(footEl) footEl.innerHTML = list.length
-    ? `<tr class="totals-row"><td colspan="2"><b>${label}</b></td><td class="num"><b>${afn(total)}</b></td><td colspan="3"></td></tr>`
+    ? `<tr class="totals-row"><td colspan="2"><b>${esc(label)}</b></td><td class="num"><b>${afn(total)}</b></td><td colspan="3"></td></tr>`
     : '';
 }
 
 /* ---------------- Render: Report ---------------- */
 let reportRange = 'all';
+function renderExpensesTimeOptions(){
+  const sel = document.getElementById('expenses-tf'); if(!sel) return;
+  sel.innerHTML = TIMEFRAMES.map(t=>`<option value="${esc(t.key)}" ${t.key===expenseTimeFilter?'selected':''}>${esc(t.label)}</option>`).join('');
+}
 function renderReportFilterChips(){
   document.getElementById('report-filters').innerHTML = TIMEFRAMES.map(t=>
-    `<button class="chip ${t.key==='all'?'active':''}" data-range="${t.key}">${t.label}</button>`
+    `<button class="chip ${t.key===reportRange?'active':''}" data-range="${esc(t.key)}">${esc(t.label)}</button>`
   ).join('');
 }
 document.getElementById('report-filters').addEventListener('click', e=>{
@@ -2407,29 +2727,29 @@ function openBookPurchaseModal(id){
   const b = id ? db.bookPurchases.find(x=>x.id===id) : null;
   openModal(`
     <h3>${b?'ویرایش خرید کتاب':'خرید کتاب جدید'}</h3>
-    <div class="field"><label>عنوان کتاب</label><input id="f-bp-title" value="${b?b.title:''}" placeholder="مثلاً: General English Coursebook 1"></div>
+    <div class="field"><label>عنوان کتاب</label><input id="f-bp-title" value="${esc(b?b.title:'')}" placeholder="مثلاً: General English Coursebook 1"></div>
     <div class="field-row">
-      <div class="field"><label>منبع (کتاب‌فروشی/مطبعه)</label><input id="f-bp-source" list="dl-book-sources" value="${b?b.source||'':''}" placeholder="مثلاً: مطبعهٔ آریانا">
-        <datalist id="dl-book-sources">${Array.from(new Set(db.bookPurchases.map(x=>x.source).filter(Boolean))).map(s=>`<option value="${s}">`).join('')}</datalist>
+      <div class="field"><label>منبع (کتاب‌فروشی/مطبعه)</label><input id="f-bp-source" list="dl-book-sources" value="${esc(b?b.source||'':'')}" placeholder="مثلاً: مطبعهٔ آریانا">
+        <datalist id="dl-book-sources">${Array.from(new Set(db.bookPurchases.map(x=>x.source).filter(Boolean))).map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
       </div>
       <div class="field"><label>شعبه</label><select id="f-bp-branch">${categoryOptionsHtml(BRANCHES, b?b.branch:BRANCHES[0])}</select></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>تعداد</label><input id="f-bp-qty" type="number" min="0" value="${b?b.quantity||'':''}" oninput="updateBookPurchaseCalc()"></div>
-      <div class="field"><label>قیمت واحد (افغانی)</label><input id="f-bp-unit" class="money-input" value="${b&&b.unitCost?numFmt(b.unitCost):''}" oninput="formatMoneyInput(this); updateBookPurchaseCalc();"></div>
+      <div class="field"><label>تعداد</label><input id="f-bp-qty" type="number" min="0" value="${esc(b?b.quantity||'':'')}" oninput="updateBookPurchaseCalc()"></div>
+      <div class="field"><label>قیمت واحد (افغانی)</label><input id="f-bp-unit" class="money-input" value="${esc(b&&b.unitCost?numFmt(b.unitCost):'')}" oninput="formatMoneyInput(this); updateBookPurchaseCalc();"></div>
     </div>
     <div class="calc-box"><span>مجموع هزینهٔ سفارش</span><b id="f-bp-total-display">${afn(b?b.totalCost||0:0)}</b></div>
     <div class="field" style="margin-top:12px;"><label>تاریخ سفارش</label>${jalaliPicker('f-bp-date', b?b.date:null)}</div>
 
     <div class="sectiontitle">وضعیت پرداخت به منبع</div>
     <div class="field-row">
-      <div class="field"><label>مبلغ پرداخت‌شده تاکنون</label><input id="f-bp-paid" class="money-input" value="${b&&b.paidAmount?numFmt(b.paidAmount):''}" oninput="formatMoneyInput(this); updateBookPurchaseCalc();" placeholder="۰"></div>
+      <div class="field"><label>مبلغ پرداخت‌شده تاکنون</label><input id="f-bp-paid" class="money-input" value="${esc(b&&b.paidAmount?numFmt(b.paidAmount):'')}" oninput="formatMoneyInput(this); updateBookPurchaseCalc();" placeholder="۰"></div>
       <div class="field"><label>تاریخ پرداخت</label>${jalaliPicker('f-bp-paid-date', b?b.paidDate:null)}</div>
     </div>
     <div class="calc-box"><span>باقیماندهٔ قابل پرداخت به منبع</span><b id="f-bp-remaining-display">${afn(b?(b.totalCost||0)-(b.paidAmount||0):0)}</b></div>
     <div class="field" style="margin-top:12px;"><label>تاریخ سررسید باقیمانده (اختیاری)</label>${jalaliPicker('f-bp-due-date', b?b.dueDate:null)}</div>
 
-    <div class="field"><label>توضیحات</label><input id="f-bp-note" value="${b?b.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-bp-note" value="${esc(b?b.note||'':'')}"></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
       <button class="btn" onclick="saveBookPurchase(${b?`'${b.id}'`:'null'})">ذخیره</button>
@@ -2472,7 +2792,7 @@ function openBookSourceHistoryModal(source){
   const totalPaid = orders.reduce((s,b)=>s+(Number(b.paidAmount)||0),0);
   const totalRemaining = totalCost - totalPaid;
   openModal(`
-    <h3>سابقهٔ سفارش‌ها · ${source}</h3>
+    <h3>سابقهٔ سفارش‌ها · ${esc(source)}</h3>
     <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:16px;">
       <div class="card c-cost"><div class="label">مجموع سفارش‌ها</div><div class="value cost" style="font-size:15px;">${afn(totalCost)}</div></div>
       <div class="card c-income"><div class="label">مجموع پرداخت‌شده</div><div class="value income" style="font-size:15px;">${afn(totalPaid)}</div></div>
@@ -2482,10 +2802,10 @@ function openBookSourceHistoryModal(source){
       <thead><tr><th>عنوان</th><th>شعبه</th><th>تعداد</th><th>مجموع هزینه</th><th>پرداخت‌شده</th><th>باقیمانده</th><th>تاریخ سفارش</th><th>سررسید</th></tr></thead>
       <tbody>${orders.map(b=>`
         <tr>
-          <td>${b.title}</td><td>${b.branch||'-'}</td><td class="num">${faDigits(b.quantity||0)}</td>
+          <td>${esc(b.title)}</td><td>${esc(b.branch||'-')}</td><td class="num">${faDigits(b.quantity||0)}</td>
           <td class="num">${afn(b.totalCost)}</td><td class="num">${afn(b.paidAmount||0)}</td>
           <td class="num">${afn((b.totalCost||0)-(b.paidAmount||0))}</td>
-          <td>${toJalali(b.date)}</td><td>${b.dueDate?toJalali(b.dueDate):'-'}</td>
+          <td>${toJalali(b.date)}</td><td>${esc(b.dueDate?toJalali(b.dueDate):'-')}</td>
         </tr>
       `).join('')}</tbody>
     </table></div>
@@ -2499,13 +2819,13 @@ function renderBooks(){
   document.getElementById('book-purchases-table').innerHTML = db.bookPurchases.map(b=>{
     const remaining = (b.totalCost||0)-(b.paidAmount||0);
     return `<tr>
-      <td>${b.title}</td><td>${b.source?`<span class="code-badge" onclick="openBookSourceHistoryModal('${b.source.replace(/'/g,"\\'")}')">${b.source}</span>`:'-'}</td><td>${b.branch||'-'}</td><td class="num">${faDigits(b.quantity||0)}</td>
+      <td>${esc(b.title)}</td><td>${b.source?`<span class="code-badge" onclick="openBookSourceHistoryModal('${escJs(b.source.replace(/'/g,"\\'"))}')">${esc(b.source)}</span>`:'-'}</td><td>${esc(b.branch||'-')}</td><td class="num">${faDigits(b.quantity||0)}</td>
       <td class="num">${afn(b.unitCost)}</td><td class="num">${afn(b.totalCost)}</td>
       <td class="num">${afn(b.paidAmount||0)}</td><td class="num">${remaining>0?`<span class="tag cost">${afn(remaining)}</span>`:`<span class="tag income">تسویه</span>`}</td>
-      <td>${b.dueDate?toJalali(b.dueDate):'-'}</td><td>${toJalali(b.date)}</td>
+      <td>${esc(b.dueDate?toJalali(b.dueDate):'-')}</td><td>${toJalali(b.date)}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openBookPurchaseModal('${b.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteBookPurchase('${b.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openBookPurchaseModal('${escJs(b.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteBookPurchase('${escJs(b.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2527,7 +2847,7 @@ function renderBooks(){
     const paid = orders.reduce((s,b)=>s+(Number(b.paidAmount)||0),0);
     const remaining = cost-paid;
     return `<tr>
-      <td><span class="code-badge" onclick="openBookSourceHistoryModal('${src.replace(/'/g,"\\'")}')">${src}</span></td>
+      <td><span class="code-badge" onclick="openBookSourceHistoryModal('${escJs(src.replace(/'/g,"\\'"))}')">${esc(src)}</span></td>
       <td class="num">${faDigits(orders.length)}</td><td class="num">${afn(cost)}</td><td class="num">${afn(paid)}</td>
       <td class="num">${remaining>0?`<span class="tag cost">${afn(remaining)}</span>`:`<span class="tag income">تسویه</span>`}</td>
     </tr>`;
@@ -2537,9 +2857,9 @@ function renderBooks(){
   document.getElementById('book-sales-empty').style.display = sold.length? 'none':'block';
   document.getElementById('book-sales-table').innerHTML = sold.map(s=>`
     <tr>
-      <td>${profileName(s.profileId)}</td><td>${className(s.classId)}</td><td>${s.bookTitle||'-'}</td>
-      <td class="num">${s.bookPrice?afn(s.bookPrice):'-'}</td><td>${s.bookTitle?`<span class="tag ${s.bookPaid?'income':'cost'}">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
-      <td class="num">${s.idCardPrice?afn(s.idCardPrice):'-'}</td><td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
+      <td>${esc(profileName(s.profileId))}</td><td>${esc(className(s.classId))}</td><td>${esc(s.bookTitle||'-')}</td>
+      <td class="num">${esc(s.bookPrice?afn(s.bookPrice):'-')}</td><td>${s.bookTitle?`<span class="tag ${s.bookPaid?'income':'cost'}">${s.bookPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
+      <td class="num">${esc(s.idCardPrice?afn(s.idCardPrice):'-')}</td><td>${s.idCardPrice?`<span class="tag ${s.idCardPaid?'income':'cost'}">${s.idCardPaid?'پرداخت‌شده':'پرداخت‌نشده'}</span>`:'-'}</td>
       <td>${toJalali(s.registerDate)}</td>
     </tr>
   `).join('');
@@ -2561,15 +2881,11 @@ function renderBooks(){
     <div class="card c-profit"><div class="label">سود خالص این بخش</div><div class="value profit">${afn(profit)}</div></div>
   `;
 
-  const now = new Date();
-  const months = []; for(let i=5;i>=0;i--) months.push(new Date(now.getFullYear(), now.getMonth()-i, 1));
-  const trend = months.map(d=>{
-    const y=d.getFullYear(), m=d.getMonth();
-    const inMonth = dateStr=>{ if(!dateStr) return false; const dd=new Date(dateStr+'T00:00:00'); return dd.getFullYear()===y && dd.getMonth()===m; };
+  const trend = lastJalaliMonths(6).map(({y,m})=>{
+    const inMonth = dateStr=>dateInMonth(dateStr, y, m);
     const cost = db.bookPurchases.filter(b=>inMonth(b.date)).reduce((s,b)=>s+(Number(b.totalCost)||0),0);
     const income = db.students.filter(s=>inMonth(s.registerDate)).reduce((s,st)=>s + ((st.bookPaid?st.bookPrice||0:0) + (st.idCardPaid?st.idCardPrice||0:0)), 0);
-    const [jy,jm] = g2jParts(`${y}-${String(m+1).padStart(2,'0')}-01`);
-    return { label: AFG_MONTHS[jm-1], income, cost, profit: income-cost };
+    return { label: AFG_MONTHS[m-1], income, cost, profit: income-cost };
   });
   const max = Math.max(1, ...trend.map(d=>Math.max(d.income, d.cost, Math.abs(d.profit))));
   document.getElementById('books-trend-chart').innerHTML = trend.map(d=>`
@@ -2579,7 +2895,7 @@ function renderBooks(){
         <div class="trend-chart-bar" style="background:var(--cost); height:${Math.max(4,(d.cost/max)*105)}px;" title="هزینه: ${afn(d.cost)}"></div>
         <div class="trend-chart-bar" style="background:var(--brand); height:${Math.max(4,(Math.abs(d.profit)/max)*105)}px;" title="سود: ${afn(d.profit)}"></div>
       </div>
-      <div class="trend-chart-label">${d.label}</div>
+      <div class="trend-chart-label">${esc(d.label)}</div>
     </div>
   `).join('');
 }
@@ -2592,13 +2908,13 @@ function openShareholderModal(id){
   const sh = id ? db.shareholders.find(x=>x.id===id) : null;
   openModal(`
     <h3>${sh?'ویرایش سهامدار':'سهامدار جدید'}</h3>
-    ${sh?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${sh.code||'-'}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
-    <div class="field"><label>نام</label><input id="f-sh-name" value="${sh?sh.name:''}"></div>
+    ${sh?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(sh.code||'-')}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
+    <div class="field"><label>نام</label><input id="f-sh-name" value="${esc(sh?sh.name:'')}"></div>
     <div class="field-row">
-      <div class="field"><label>سهم از سود (٪)</label><input id="f-sh-share" type="number" min="0" max="100" value="${sh?sh.sharePercent||'':''}"></div>
-      <div class="field"><label>شماره تماس</label><input id="f-sh-phone" value="${sh?sh.phone||'':''}"></div>
+      <div class="field"><label>سهم از سود (٪)</label><input id="f-sh-share" type="number" min="0" max="100" value="${esc(sh?sh.sharePercent||'':'')}"></div>
+      <div class="field"><label>شماره تماس</label><input id="f-sh-phone" value="${esc(sh?sh.phone||'':'')}"></div>
     </div>
-    <div class="field"><label>توضیحات</label><input id="f-sh-note" value="${sh?sh.note||'':''}"></div>
+    <div class="field"><label>توضیحات</label><input id="f-sh-note" value="${esc(sh?sh.note||'':'')}"></div>
     <p class="hint">مجموع سهم همهٔ سهامداران بهتر است ۱۰۰٪ باشد؛ در حال حاضر مجموع = <b id="sh-total-check"></b></p>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
@@ -2633,31 +2949,31 @@ function openShareholderProfileModal(id){
   const sh = db.shareholders.find(x=>x.id===id); if(!sh) return;
   openModal(`
     <h3>پروندهٔ سهامدار</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${sh.code||'-'}</span> · سهم: ${faDigits(sh.sharePercent||0)}٪</p>
-    <div class="panel" style="background:var(--panel-2); padding:12px 14px; margin-bottom:16px;">
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(sh.code||'-')}</span> · سهم: ${faDigits(sh.sharePercent||0)}٪</p>
+    ${currentRole==='shareholder' ? `<div class="panel" style="background:var(--panel-2); padding:12px 14px; margin-bottom:16px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <span style="font-size:12.5px; color:var(--text-dim);">رمز عبور ورود این سهامدار:</span>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="code-badge" style="cursor:default;">${sh.password||'-'}</span>
-          <button class="btn ghost small" onclick="regenerateShareholderPassword('${sh.id}')">تولید رمز جدید</button>
+          <span class="code-badge" style="cursor:default;">${esc(sh.password||'-')}</span>
+          <button class="btn ghost small" onclick="regenerateShareholderPassword('${escJs(sh.id)}')">تولید رمز جدید</button>
         </div>
       </div>
-    </div>
+    </div>` : ''}
     <div class="profile-grid">
       <div class="upload-box">
         <label>عکس سهامدار</label>
-        ${sh.photo?`<img src="${sh.photo}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const s=db.shareholders.find(x=>x.id==='${sh.id}'); s.photo=url; save(); openShareholderProfileModal('${sh.id}'); })">
+        ${sh.photo?`<img src="${esc(sh.photo)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const s=db.shareholders.find(x=>x.id==='${escJs(sh.id)}'); s.photo=url; save(); openShareholderProfileModal('${escJs(sh.id)}'); })">
       </div>
       <div class="upload-box">
         <label>عکس سند هویت</label>
-        ${sh.idPhoto?`<img src="${sh.idPhoto}">`:''}
-        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const s=db.shareholders.find(x=>x.id==='${sh.id}'); s.idPhoto=url; save(); openShareholderProfileModal('${sh.id}'); })">
+        ${sh.idPhoto?`<img src="${esc(sh.idPhoto)}">`:''}
+        <input type="file" accept="image/*" onchange="readImageAsDataURL(this, url=>{ const s=db.shareholders.find(x=>x.id==='${escJs(sh.id)}'); s.idPhoto=url; save(); openShareholderProfileModal('${escJs(sh.id)}'); })">
       </div>
     </div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">بستن</button>
-      <button class="btn" onclick="closeModal(); openShareholderModal('${sh.id}');">ویرایش اطلاعات</button>
+      <button class="btn" onclick="closeModal(); openShareholderModal('${escJs(sh.id)}');">ویرایش اطلاعات</button>
     </div>
   `, {wide:true});
 }
@@ -2680,11 +2996,11 @@ function renderShareholders(){
   document.getElementById('shareholders-empty').style.display = db.shareholders.length? 'none':'block';
   document.getElementById('shareholders-table').innerHTML = db.shareholders.map(sh=>`
     <tr>
-      <td><span class="code-badge" onclick="openShareholderProfileModal('${sh.id}')">${sh.code||'-'}</span></td>
-      <td>${sh.name}</td><td class="num">${faDigits(sh.sharePercent||0)}٪</td><td>${sh.phone||'-'}</td>
+      <td><span class="code-badge" onclick="openShareholderProfileModal('${escJs(sh.id)}')">${esc(sh.code||'-')}</span></td>
+      <td>${esc(sh.name)}</td><td class="num">${faDigits(sh.sharePercent||0)}٪</td><td>${esc(sh.phone||'-')}</td>
       <td><div class="row-actions">
-        <button class="icon-btn" onclick="openShareholderModal('${sh.id}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
-        <button class="icon-btn" onclick="deleteShareholder('${sh.id}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
+        <button class="icon-btn" onclick="openShareholderModal('${escJs(sh.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+        <button class="icon-btn" onclick="deleteShareholder('${escJs(sh.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
       </div></td>
     </tr>
   `).join('');
@@ -2692,7 +3008,7 @@ function renderShareholders(){
   const net = institutionNetProfit();
   document.getElementById('shareholder-split-cards').innerHTML = db.shareholders.map(sh=>{
     const share = Math.round(net * (Number(sh.sharePercent)||0)/100);
-    return `<div class="card c-profit"><div class="label">${sh.name} (${faDigits(sh.sharePercent||0)}٪)</div><div class="value profit">${afn(share)}</div></div>`;
+    return `<div class="card c-profit"><div class="label">${esc(sh.name)} (${faDigits(sh.sharePercent||0)}٪)</div><div class="value profit">${afn(share)}</div></div>`;
   }).join('') + `<div class="card c-income"><div class="label">سود خالص کل مؤسسه (همهٔ منابع)</div><div class="value income">${afn(net)}</div></div>`;
 }
 
@@ -2712,12 +3028,12 @@ function renderActivityLog(){
   const { pageItems, totalPages } = paginateList('activityLog', log);
   tbl.innerHTML = pageItems.map(l=>`
     <tr>
-      <td style="white-space:nowrap;">${formatLogTime(l.ts)}</td>
-      <td><span class="tag info">${ROLE_LABELS[l.role]||l.role}</span></td>
-      <td>${l.actor}</td>
-      <td>${l.action}</td>
-      <td>${l.entityType}</td>
-      <td>${l.label||''}</td>
+      <td style="white-space:nowrap;">${esc(formatLogTime(l.ts))}</td>
+      <td><span class="tag info">${esc(ROLE_LABELS[l.role]||l.role)}</span></td>
+      <td>${esc(l.actor)}</td>
+      <td>${esc(l.action)}</td>
+      <td>${esc(l.entityType)}</td>
+      <td>${esc(l.label||'')}</td>
     </tr>
   `).join('');
   renderPaginationControls('activity-log-pagination', 'activityLog', totalPages, 'renderActivityLog');
@@ -2764,20 +3080,6 @@ function saveReferralSettings(){
 }
 
 /* ---------------- Attendance ---------------- */
-function classSessionDates(c){
-  if(!c.startDate) return [];
-  const end = c.endDate || todayISO();
-  const dates = [];
-  let d = new Date(c.startDate+'T00:00:00');
-  const endD = new Date(end+'T00:00:00');
-  while(d<=endD){
-    if(d.getDay()!==5){ // 5 = Friday (day off)
-      dates.push(dateToISO(d));
-    }
-    d.setDate(d.getDate()+1);
-  }
-  return dates;
-}
 function attendanceRecord(classId, date){
   return db.attendance.find(a=>a.classId===classId && a.date===date);
 }
@@ -2809,9 +3111,9 @@ function renderAttendanceClassOptions(){
   const sel = document.getElementById('att-class-select'); if(!sel) return;
   const prevVal = sel.value;
   let classList = db.classes;
-  if(currentRole==='teacher') classList = classList.filter(c=>c.teacherId===currentTeacherId);
+  if(currentRole==='teacher') classList = classList.filter(c=>classHasTeacher(c, currentTeacherId));
   sel.innerHTML = '<option value="">انتخاب کنید</option>' + classList.map(c=>
-    `<option value="${c.id}">${c.name||c.category} · ${c.branch||'-'}</option>`
+    `<option value="${esc(c.id)}">${esc(c.name||c.category)} · ${esc(c.branch||'-')}</option>`
   ).join('');
   if(classList.some(c=>c.id===prevVal)) sel.value = prevVal;
   renderAttendanceGrid();
@@ -2853,10 +3155,10 @@ function renderClassMarks(classId, enrolled, force){
   const val = v => (v!=='' && v!==undefined && v!==null) ? v : '';
   const rows = enrolled.map(s=>`
     <tr>
-      <td>${profileName(s.profileId)}</td>
-      <td><input type="number" min="0" max="100" id="mk-act__${s.id}" value="${val(s.activityScore)}" style="width:82px;"></td>
-      <td><input type="number" min="0" max="100" id="mk-mid__${s.id}" value="${val(s.midtermScore)}" style="width:82px;"></td>
-      <td><input type="number" min="0" max="100" id="mk-fin__${s.id}" value="${val(s.examScore)}" style="width:82px;"></td>
+      <td>${esc(profileName(s.profileId))}</td>
+      <td><input type="number" min="0" max="100" id="mk-act__${esc(s.id)}" value="${esc(val(s.activityScore))}" style="width:82px;"></td>
+      <td><input type="number" min="0" max="100" id="mk-mid__${esc(s.id)}" value="${esc(val(s.midtermScore))}" style="width:82px;"></td>
+      <td><input type="number" min="0" max="100" id="mk-fin__${esc(s.id)}" value="${esc(val(s.examScore))}" style="width:82px;"></td>
     </tr>`).join('');
   wrap.innerHTML = `<div class="table-scroll"><table><thead><tr><th>شاگرد</th><th>فعالیت صنفی</th><th>میان‌ترم</th><th>فاینل</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   marksRenderedClassId = classId;
@@ -2895,8 +3197,13 @@ function renderAttendanceGrid(){
   const { pageItems: enrolledPage, totalPages } = paginateList(attKey, enrolled);
   const isAct = attendanceMode==='activity';
 
+  const shared = isSharedClass(c);
+  const sharedLegend = shared ? `<div class="hint" style="margin:0 0 8px;">صنف دو مدرسه — <b>م۱</b>: ${esc(teacherName(c.teacherId))}${c.teacherSkills?` (${esc(c.teacherSkills)})`:''} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,c.teacherId)])} &nbsp;|&nbsp; <b>م۲</b>: ${esc(teacherName(c.teacher2Id))}${c.teacher2Skills?` (${esc(c.teacher2Skills)})`:''} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,c.teacher2Id)])}</div>` : '';
   const head = `<th style="position:sticky; right:0; background:var(--panel-2); min-width:150px;">شاگرد</th>` +
-    dates.map(d=>{ const p=g2jParts(d); return `<th style="min-width:42px; font-size:10px; line-height:1.35; white-space:nowrap;">${faDigits(p[2])}<br>${AFG_MONTHS[p[1]-1]}</th>`; }).join('') +
+    dates.map(d=>{ const p=g2jParts(d);
+      // Two-teacher class: mark which teacher (۱ / ۲) takes this day.
+      const who = shared ? (classTeacherOnDate(c, d)===c.teacherId ? '۱' : '۲') : '';
+      return `<th style="min-width:46px; font-size:10px; line-height:1.35; white-space:nowrap;${who==='۲'?' background:var(--brand-bg);':''}"><span style="color:var(--text-dim);">${esc(weekdayName(d))}</span><br>${faDigits(p[2])}<br>${esc(AFG_MONTHS[p[1]-1])}${who?`<br><b title="${esc(teacherName(classTeacherOnDate(c, d)))}">م${who}</b>`:''}</th>`; }).join('') +
     `<th style="min-width:70px;">${isAct?'مثبت/منفی':'حاضر/غایب'}</th>`;
   const rows = enrolledPage.map(s=>{
     const cells = dates.map(d=>{
@@ -2905,17 +3212,17 @@ function renderAttendanceGrid(){
         const mark = rec && rec.part ? rec.part[s.id] : undefined;
         const symbol = mark==='+' ? '＋' : mark==='-' ? '－' : '·';
         const color = mark==='+' ? 'var(--income)' : mark==='-' ? 'var(--cost)' : 'var(--text-faint)';
-        return `<td id="${attCellId(classId,d,s.id)}" style="text-align:center; cursor:pointer; color:${color}; font-weight:700;" onclick="cycleActivity('${classId}','${d}','${s.id}')">${symbol}</td>`;
+        return `<td id="${esc(attCellId(classId,d,s.id))}" style="text-align:center; cursor:pointer; color:${esc(color)}; font-weight:700;" onclick="cycleActivity('${escJs(classId)}','${escJs(d)}','${escJs(s.id)}')">${esc(symbol)}</td>`;
       }
       const mark = rec ? rec.marks[s.id] : undefined;
       const symbol = mark===true ? '✓' : mark===false ? '✕' : '-';
       const color = mark===true ? 'var(--income)' : mark===false ? 'var(--cost)' : 'var(--text-faint)';
-      return `<td id="${attCellId(classId,d,s.id)}" style="text-align:center; cursor:pointer; color:${color}; font-weight:700;" onclick="cycleAttendance('${classId}','${d}','${s.id}')">${symbol}</td>`;
+      return `<td id="${esc(attCellId(classId,d,s.id))}" style="text-align:center; cursor:pointer; color:${esc(color)}; font-weight:700;" onclick="cycleAttendance('${escJs(classId)}','${escJs(d)}','${escJs(s.id)}')">${esc(symbol)}</td>`;
     }).join('');
     let summary;
     if(isAct){ const p=studentParticipationTotals(classId,s.id); summary=`<span style="color:var(--income);">+${faDigits(p.plus)}</span> / <span style="color:var(--cost);">−${faDigits(p.minus)}</span>`; }
     else { const t=studentAttendanceTotals(classId,s.id); summary=`${faDigits(t.present)} / ${faDigits(t.absent)}`; }
-    return `<tr><td style="position:sticky; right:0; background:var(--panel);">${profileName(s.profileId)}</td>${cells}<td class="num" id="att-summary__${classId}__${s.id}">${summary}</td></tr>`;
+    return `<tr><td style="position:sticky; right:0; background:var(--panel);">${esc(profileName(s.profileId))}</td>${cells}<td class="num" id="att-summary__${esc(classId)}__${esc(s.id)}">${summary}</td></tr>`;
   }).join('');
 
   const hint = isAct
@@ -2923,6 +3230,7 @@ function renderAttendanceGrid(){
     : 'روی هر خانه کلیک کنید تا بین «نامشخص»، «حاضر ✓» و «غایب ✕» تغییر کند؛ در پایان حتماً روی «ذخیره» بزنید.';
   wrap.innerHTML = `
     <p class="hint" style="margin:10px 0;">${hint}</p>
+    ${sharedLegend}
     <div class="table-scroll"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="pagination" id="att-grid-pagination"></div>
   `;
@@ -2981,19 +3289,21 @@ function commitAttendanceSave(silent, classIdOverride){
   }
 }
 
+/* The last n Afghan calendar months, oldest first, ending with the current one. */
+function lastJalaliMonths(n){
+  let [y, m] = g2jParts(todayISO());
+  const out = [];
+  for(let i=0;i<n;i++){ out.unshift({y, m}); ({y, m} = prevJalaliMonth(y, m)); }
+  return out;
+}
 function monthlyTrendData(){
-  const now = new Date();
-  const months = [];
-  for(let i=5;i>=0;i--) months.push(new Date(now.getFullYear(), now.getMonth()-i, 1));
-  return months.map(d=>{
-    const y=d.getFullYear(), m=d.getMonth();
-    const inMonth = dateStr=>{ if(!dateStr) return false; const dd=new Date(dateStr+'T00:00:00'); return dd.getFullYear()===y && dd.getMonth()===m; };
+  return lastJalaliMonths(6).map(({y,m})=>{
+    const inMonth = dateStr=>dateInMonth(dateStr, y, m);
     const dons = db.donations.filter(x=>inMonth(x.date));
     const exps = db.expenses.filter(x=>inMonth(x.date));
     const income = dons.reduce((s,x)=>s+donationNetAmount(x),0);
     const cost = exps.reduce((s,x)=>s+(Number(x.amount)||0),0);
-    const [jy,jm] = g2jParts(`${y}-${String(m+1).padStart(2,'0')}-01`);
-    return { label: AFG_MONTHS[jm-1], income, cost, profit: income-cost };
+    return { label: AFG_MONTHS[m-1], income, cost, profit: income-cost };
   });
 }
 function renderMonthlyTrend(){
@@ -3006,7 +3316,7 @@ function renderMonthlyTrend(){
         <div class="trend-chart-bar" style="background:var(--cost); height:${Math.max(4,(d.cost/max)*105)}px;" title="هزینه: ${afn(d.cost)}"></div>
         <div class="trend-chart-bar" style="background:var(--brand); height:${Math.max(4,(Math.abs(d.profit)/max)*105)}px;" title="باقیمانده: ${afn(d.profit)}"></div>
       </div>
-      <div class="trend-chart-label">${d.label}</div>
+      <div class="trend-chart-label">${esc(d.label)}</div>
     </div>
   `).join('');
 }
@@ -3059,7 +3369,7 @@ function renderReport(){
   const byCat = {};
   exps.forEach(e=>{ byCat[e.category] = (byCat[e.category]||0) + (Number(e.amount)||0); });
   const rows = Object.keys(byCat).length
-    ? Object.entries(byCat).map(([cat,amt])=>`<tr><td>${cat}</td><td class="num">${afn(amt)}</td></tr>`).join('')
+    ? Object.entries(byCat).map(([cat,amt])=>`<tr><td>${esc(cat)}</td><td class="num">${afn(amt)}</td></tr>`).join('')
     : `<tr><td colspan="2" class="empty">هزینهی در این بازه ثبت نشده.</td></tr>`;
   document.getElementById('report-expense-breakdown').innerHTML = rows;
 
@@ -3084,7 +3394,7 @@ function renderReport(){
 
   document.getElementById('report-branch-breakdown').innerHTML = branchStats.map(d=>`
     <tr>
-      <td>${d.branch}</td>
+      <td>${esc(d.branch)}</td>
       <td class="num">${faDigits(d.activeBranchClasses)}</td>
       <td class="num">${faDigits(d.studentCount)} ${pct(d.studentCount, totStudents)}</td>
       <td class="num">${afn(d.branchIncome)} ${pct(d.branchIncome, totIncome)}</td>
@@ -3137,18 +3447,18 @@ function renderSeasonComparison(){
     const pct = Math.round(diff/Math.abs(prevVal)*100);
     const sign = diff>=0 ? '+' : '−';
     const color = diff>=0 ? 'var(--income)' : 'var(--cost)';
-    return ` <span style="color:${color}; font-size:11px;">(${sign}${faDigits(Math.abs(pct))}٪)</span>`;
+    return ` <span style="color:${esc(color)}; font-size:11px;">(${esc(sign)}${faDigits(Math.abs(pct))}٪)</span>`;
   };
 
   document.getElementById('season-comparison-table').innerHTML = rows.length ? rows.map((r,i)=>{
     const prev = i>0 ? rows[i-1] : null;
     return `<tr>
       <td>${faDigits(r.y)}</td>
-      <td class="num">${faDigits(r.classesCount)}${prev?chg(r.classesCount,prev.classesCount):''}</td>
-      <td class="num">${faDigits(r.studentsCount)}${prev?chg(r.studentsCount,prev.studentsCount):''}</td>
-      <td class="num">${afn(r.income)}${prev?chg(r.income,prev.income):''}</td>
-      <td class="num">${afn(r.cost)}${prev?chg(r.cost,prev.cost):''}</td>
-      <td class="num"><b style="color:${r.profit>=0?'var(--gold-soft)':'var(--cost)'};">${afn(r.profit)}</b>${prev?chg(r.profit,prev.profit):''}</td>
+      <td class="num">${faDigits(r.classesCount)}${esc(prev?chg(r.classesCount,prev.classesCount):'')}</td>
+      <td class="num">${faDigits(r.studentsCount)}${esc(prev?chg(r.studentsCount,prev.studentsCount):'')}</td>
+      <td class="num">${afn(r.income)}${esc(prev?chg(r.income,prev.income):'')}</td>
+      <td class="num">${afn(r.cost)}${esc(prev?chg(r.cost,prev.cost):'')}</td>
+      <td class="num"><b style="color:${r.profit>=0?'var(--gold-soft)':'var(--cost)'};">${afn(r.profit)}</b>${esc(prev?chg(r.profit,prev.profit):'')}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="6" class="empty">داده‌ای برای این فصل ثبت نشده.</td></tr>`;
 }
@@ -3164,9 +3474,11 @@ function renderAll(){
   if(typeof renderTaxReport==='function') renderTaxReport();
   if(typeof renderTeacherDiscipline==='function') renderTeacherDiscipline();
   if(typeof renderStudentSelf==='function') renderStudentSelf();
+  if(typeof renderPrintSettings==='function') renderPrintSettings();
   if(document.getElementById('att-class-select') && document.getElementById('att-class-select').value) renderAttendanceGrid();
 }
 renderReportFilterChips();
+renderExpensesTimeOptions();
 renderClassesFilterChips();
 renderExpensesFilterChips();
 renderExportBars();
@@ -3179,27 +3491,30 @@ window.addEventListener('beforeunload', e=>{
 
 /* ---------------- Access gate bootstrap ---------------- */
 function populateGateSelects(){
+  // Before login this browser may not have the shared data; the server's public
+  // directory (names only) is the up-to-date list of who can log in.
+  const dir = window.hadafDirectory || { shareholders: db.shareholders, teachers: db.teachers };
   const sel = document.getElementById('gate-teacher-select');
   if(sel){
     sel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      db.teachers.filter(t=>t.role==='مدرس').map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+      dir.teachers.filter(t=>t.role==='مدرس').map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
   const shSel = document.getElementById('gate-shareholder-select');
   if(shSel){
     shSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      db.shareholders.map(sh=>`<option value="${sh.id}">${sh.name}</option>`).join('');
+      dir.shareholders.map(sh=>`<option value="${esc(sh.id)}">${esc(sh.name)}</option>`).join('');
   }
   const mgrSel = document.getElementById('gate-manager-select');
   if(mgrSel){
-    const managers = db.teachers.filter(t=>t.role==='مدیریت');
+    const managers = dir.teachers.filter(t=>t.role==='مدیریت');
     mgrSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      managers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+      managers.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
   const empSel = document.getElementById('gate-employee-select');
   if(empSel){
-    const employees = db.teachers.filter(t=>t.role==='کارمند');
+    const employees = dir.teachers.filter(t=>t.role==='کارمند');
     empSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
-      employees.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+      employees.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
 }
 (function initAccessGate(){
@@ -3208,7 +3523,7 @@ function populateGateSelects(){
   if(genBox && migrationGeneratedPasswords.length){
     genBox.style.display = 'block';
     genBox.innerHTML = '<b>رمزهای عبور تازه‌ساخته‌شده برای این داده‌ها (فقط یک‌بار نمایش داده می‌شود، جایی یادداشت کنید):</b><br>' +
-      migrationGeneratedPasswords.map(p=>`${p.name} (${p.role}, ${p.code}): <b class="code-badge" style="cursor:default;">${p.password}</b>`).join('<br>');
+      migrationGeneratedPasswords.map(p=>`${esc(p.name)} (${esc(p.role)}, ${esc(p.code)}): <b class="code-badge" style="cursor:default;">${esc(p.password)}</b>`).join('<br>');
   }
   if(currentRole && (currentRole!=='teacher' || currentTeacherId) && (currentRole!=='student' || currentStudentId) && currentActorName){
     applyRoleVisibility();
@@ -3219,7 +3534,6 @@ function populateGateSelects(){
   } else {
     currentRole = ''; currentTeacherId=''; currentStudentId=''; currentActorName='';
     showAccessGate();
-    renderQuickLoginCards();
     updateThemeUI(getCurrentTheme());
   }
 })();

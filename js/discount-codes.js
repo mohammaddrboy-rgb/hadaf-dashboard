@@ -125,7 +125,7 @@ function renderDiscountCodes(){
     const schools = Array.from(new Set(all.map(c=>c.schoolName).filter(Boolean))).sort();
     const cur = dcFilter.school;
     schoolSel.innerHTML = '<option value="all">همه</option>' +
-      schools.map(s=>`<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
+      schools.map(s=>`<option value="${esc(s)}" ${s===cur?'selected':''}>${esc(s)}</option>`).join('');
     if(cur!=='all' && !schools.includes(cur)) { dcFilter.school='all'; schoolSel.value='all'; }
   }
 
@@ -147,23 +147,23 @@ function renderDiscountCodes(){
     let actions = '';
     if(canManage){
       if(status==='unused'){
-        actions = `<button class="btn ghost small" onclick="assignDiscountCode('${c.id}')">تخصیص</button>
-                   <button class="btn ghost small" onclick="voidDiscountCode('${c.id}')">باطل</button>`;
+        actions = `<button class="btn ghost small" onclick="assignDiscountCode('${escJs(c.id)}')">تخصیص</button>
+                   <button class="btn ghost small" onclick="voidDiscountCode('${escJs(c.id)}')">باطل</button>`;
       } else if(status==='void'){
-        actions = `<button class="btn ghost small" onclick="reactivateDiscountCode('${c.id}')">فعال‌سازی</button>
-                   <button class="btn ghost small" onclick="deleteDiscountCode('${c.id}')">حذف</button>`;
+        actions = `<button class="btn ghost small" onclick="reactivateDiscountCode('${escJs(c.id)}')">فعال‌سازی</button>
+                   <button class="btn ghost small" onclick="deleteDiscountCode('${escJs(c.id)}')">حذف</button>`;
       } else {
-        actions = `<button class="btn ghost small" onclick="releaseDiscountCode('${c.id}')">آزادسازی</button>`;
+        actions = `<button class="btn ghost small" onclick="releaseDiscountCode('${escJs(c.id)}')">آزادسازی</button>`;
       }
     }
     return `<tr>
-      <td><code class="code-badge" style="cursor:default;">${c.code}</code></td>
+      <td><code class="code-badge" style="cursor:default;">${esc(c.code)}</code></td>
       <td>${faDigits(c.discountPercent||0)}٪</td>
       <td>${faDigits(c.commissionPercent||0)}٪</td>
-      <td>${schoolManager}</td>
+      <td>${esc(schoolManager)}</td>
       <td>${tag}</td>
-      <td>${usedBy}</td>
-      <td style="white-space:nowrap;">${dateStr}</td>
+      <td>${esc(usedBy)}</td>
+      <td style="white-space:nowrap;">${esc(dateStr)}</td>
       <td style="white-space:nowrap;">${actions}</td>
     </tr>`;
   }).join('');
@@ -211,16 +211,16 @@ function assignDiscountCode(id){
   const c = (db.discountCodes||[]).find(x=>x.id===id); if(!c) return;
   openModal(`
     <h3>تخصیص کد به مکتب</h3>
-    <p class="sub">کد <code class="code-badge" style="cursor:default;">${c.code}</code> را به یک مکتب یا مدیر اختصاص دهید.</p>
-    <div class="field"><label>نام مکتب</label><input id="f-dc-assign-school" value="${c.schoolName||''}"></div>
-    <div class="field"><label>نام مدیر/مسئول</label><input id="f-dc-assign-manager" value="${c.managerName||''}"></div>
+    <p class="sub">کد <code class="code-badge" style="cursor:default;">${esc(c.code)}</code> را به یک مکتب یا مدیر اختصاص دهید.</p>
+    <div class="field"><label>نام مکتب</label><input id="f-dc-assign-school" value="${esc(c.schoolName||'')}"></div>
+    <div class="field"><label>نام مدیر/مسئول</label><input id="f-dc-assign-manager" value="${esc(c.managerName||'')}"></div>
     <div class="field-row">
-      <div class="field"><label>درصد تخفیف</label><input id="f-dc-assign-discount" type="number" min="0" max="100" value="${c.discountPercent||0}"></div>
-      <div class="field"><label>درصد کمیشن</label><input id="f-dc-assign-commission" type="number" min="0" max="100" value="${c.commissionPercent||0}"></div>
+      <div class="field"><label>درصد تخفیف</label><input id="f-dc-assign-discount" type="number" min="0" max="100" value="${esc(c.discountPercent||0)}"></div>
+      <div class="field"><label>درصد کمیشن</label><input id="f-dc-assign-commission" type="number" min="0" max="100" value="${esc(c.commissionPercent||0)}"></div>
     </div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">انصراف</button>
-      <button class="btn" onclick="saveDiscountCodeAssignment('${id}')">ذخیره</button>
+      <button class="btn" onclick="saveDiscountCodeAssignment('${escJs(id)}')">ذخیره</button>
     </div>
   `);
 }
@@ -287,7 +287,7 @@ function printDiscountCodes(){
   if(!unused.length){ alert('کد استفاده‌نشده‌ای برای چاپ وجود ندارد.'); return; }
   const win = window.open('', '_blank');
   if(!win){ alert('لطفاً اجازهٔ باز شدن پنجرهٔ چاپ را بدهید.'); return; }
-  const cells = unused.map(c=>`<div class="code-cell"><div class="c">${c.code}</div><div class="d">${c.discountPercent||0}% تخفیف</div>${c.schoolName?`<div class="s">${c.schoolName}</div>`:''}</div>`).join('');
+  const cells = unused.map(c=>`<div class="code-cell"><div class="c">${esc(c.code)}</div><div class="d">${esc(c.discountPercent||0)}% تخفیف</div>${c.schoolName?`<div class="s">${esc(c.schoolName)}</div>`:''}</div>`).join('');
   win.document.write(`<!doctype html><html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>کدهای تخفیف هدف</title>
     <style>
       body{font-family:Tahoma,Arial,sans-serif;padding:16px;}
