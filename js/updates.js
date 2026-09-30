@@ -296,10 +296,7 @@ function renderTaxReport(){
   const byBranch = taxFeesByBranch();
   const monthly = taxMonthly();
 
-  const tfOpts = [
-    ['all','همه'],['daily','روزانه'],['weekly','هفتگی'],['monthly','ماهانه'],
-    ['quarterly','فصلی'],['biannual','شش‌ماهه'],['annual','سالانه']
-  ].map(([v,l])=>`<option value="${esc(v)}" ${taxFilter.tf===v?'selected':''}>${esc(l)}</option>`).join('');
+  const tfOpts = TIMEFRAMES.map(t=>[t.key, t.label]).map(([v,l])=>`<option value="${esc(v)}" ${taxFilter.tf===v?'selected':''}>${esc(l)}</option>`).join('');
   const brOpts = `<option value="all" ${taxFilter.branch==='all'?'selected':''}>همهٔ شعبه‌ها</option>` +
     BRANCHES.map(b=>`<option value="${esc(b)}" ${taxFilter.branch===b?'selected':''}>${esc(b)}</option>`).join('');
 
@@ -381,7 +378,7 @@ function exportTaxReport(){
   const totalCost = Object.values(costByCat).reduce((a,b)=>a+b,0);
   const byBranch = taxFeesByBranch();
   const monthly = taxMonthly();
-  const tfLabel = ({all:'همه',daily:'روزانه',weekly:'هفتگی',monthly:'ماهانه',quarterly:'فصلی',biannual:'شش‌ماهه',annual:'سالانه'})[taxFilter.tf]||taxFilter.tf;
+  const tfLabel = timeframeLabel(taxFilter.tf)||taxFilter.tf;
 
   const summary = [
     {'مورد':'بازهٔ زمانی','مبلغ (افغانی)':tfLabel},

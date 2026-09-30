@@ -723,33 +723,51 @@ function seminarLocationOptionsHtml(selected){
 }
 
 /* ---------------- Timeframes & Excel export ---------------- */
+/* Report periods follow the Afghan (Solar Hijri) calendar: "this month" is
+   from the 1st of the current Hijri month (e.g. 1 Mizan) to today, seasons are
+   Hamal–Jawza, Saratan–Sonbola, Mizan–Qaws, Jadi–Hoot, the year starts 1 Hamal,
+   and the week starts on Saturday. Labels are getters so they name the month. */
+const SEASON_NAMES = ['بهار','تابستان','پاییز','زمستان'];
+function prevJalaliMonth(y, m){ return m>1 ? {y, m:m-1} : {y:y-1, m:12}; }
 const TIMEFRAMES = [
   {key:'all', label:'همه'},
-  {key:'daily', label:'روزانه'},
-  {key:'weekly', label:'هفتگی'},
-  {key:'monthly', label:'ماهانه'},
-  {key:'quarterly', label:'فصلی'},
-  {key:'biannual', label:'شش‌ماهه'},
-  {key:'annual', label:'سالانه'},
+  {key:'daily', label:'امروز'},
+  {key:'weekly', label:'این هفته (از شنبه)'},
+  {key:'monthly', get label(){ const [,m]=g2jParts(todayISO()); return `این ماه (${AFG_MONTHS[m-1]})`; }},
+  {key:'prevMonth', get label(){ const [y,m]=g2jParts(todayISO()); const p=prevJalaliMonth(y,m); return `ماه گذشته (${AFG_MONTHS[p.m-1]})`; }},
+  {key:'quarterly', get label(){ const [,m]=g2jParts(todayISO()); return `این فصل (${SEASON_NAMES[Math.floor((m-1)/3)]})`; }},
+  {key:'biannual', get label(){ const [,m]=g2jParts(todayISO()); return m<=6 ? 'این نیم‌سال (حمل تا سنبله)' : 'این نیم‌سال (میزان تا حوت)'; }},
+  {key:'annual', get label(){ const [y]=g2jParts(todayISO()); return `امسال (${faDigits(y)})`; }},
 ];
-function getRangeStart(key){
-  const now = new Date(); const start = new Date(now);
+function timeframeLabel(key){ const t = TIMEFRAMES.find(x=>x.key===key); return t ? t.label : key; }
+/* { start, end } as YYYY-MM-DD (inclusive), or null for "all". */
+function getRange(key){
+  const today = todayISO();
+  const [jy, jm] = g2jParts(today);
   switch(key){
-    case 'daily': start.setHours(0,0,0,0); return start;
-    case 'weekly': start.setDate(now.getDate()-7); return start;
-    case 'monthly': start.setMonth(now.getMonth()-1); return start;
-    case 'quarterly': start.setMonth(now.getMonth()-3); return start;
-    case 'biannual': start.setMonth(now.getMonth()-6); return start;
-    case 'annual': start.setFullYear(now.getFullYear()-1); return start;
+    case 'daily': return { start: today, end: today };
+    case 'weekly': {
+      const d = new Date(today+'T00:00:00');
+      d.setDate(d.getDate() - (d.getDay()+1)%7); // back to Saturday
+      return { start: dateToISO(d), end: today };
+    }
+    case 'monthly': return { start: j2gISO(jy, jm, 1), end: today };
+    case 'prevMonth': {
+      const p = prevJalaliMonth(jy, jm);
+      const end = new Date(j2gISO(jy, jm, 1)+'T00:00:00'); end.setDate(end.getDate()-1);
+      return { start: j2gISO(p.y, p.m, 1), end: dateToISO(end) };
+    }
+    case 'quarterly': return { start: j2gISO(jy, Math.floor((jm-1)/3)*3+1, 1), end: today };
+    case 'biannual': return { start: j2gISO(jy, jm<=6 ? 1 : 7, 1), end: today };
+    case 'annual': return { start: j2gISO(jy, 1, 1), end: today };
     default: return null;
   }
 }
 function inTimeframe(dateStr, key){
-  const start = getRangeStart(key);
-  if(!start) return true;
+  const r = getRange(key);
+  if(!r) return true;
   if(!dateStr) return false;
-  const d = new Date(dateStr+'T00:00:00');
-  return d>=start && d<=new Date();
+  return dateStr>=r.start && dateStr<=r.end;
 }
 function filterByDate(list, field, key){
   if(key==='all'||!key) return list;
@@ -2513,9 +2531,13 @@ function renderExpenses(){
 
 /* ---------------- Render: Report ---------------- */
 let reportRange = 'all';
+function renderExpensesTimeOptions(){
+  const sel = document.getElementById('expenses-tf'); if(!sel) return;
+  sel.innerHTML = TIMEFRAMES.map(t=>`<option value="${esc(t.key)}" ${t.key===expenseTimeFilter?'selected':''}>${esc(t.label)}</option>`).join('');
+}
 function renderReportFilterChips(){
   document.getElementById('report-filters').innerHTML = TIMEFRAMES.map(t=>
-    `<button class="chip ${t.key==='all'?'active':''}" data-range="${esc(t.key)}">${esc(t.label)}</button>`
+    `<button class="chip ${t.key===reportRange?'active':''}" data-range="${esc(t.key)}">${esc(t.label)}</button>`
   ).join('');
 }
 document.getElementById('report-filters').addEventListener('click', e=>{
@@ -2696,15 +2718,11 @@ function renderBooks(){
     <div class="card c-profit"><div class="label">سود خالص این بخش</div><div class="value profit">${afn(profit)}</div></div>
   `;
 
-  const now = new Date();
-  const months = []; for(let i=5;i>=0;i--) months.push(new Date(now.getFullYear(), now.getMonth()-i, 1));
-  const trend = months.map(d=>{
-    const y=d.getFullYear(), m=d.getMonth();
-    const inMonth = dateStr=>{ if(!dateStr) return false; const dd=new Date(dateStr+'T00:00:00'); return dd.getFullYear()===y && dd.getMonth()===m; };
+  const trend = lastJalaliMonths(6).map(({y,m})=>{
+    const inMonth = dateStr=>dateInMonth(dateStr, y, m);
     const cost = db.bookPurchases.filter(b=>inMonth(b.date)).reduce((s,b)=>s+(Number(b.totalCost)||0),0);
     const income = db.students.filter(s=>inMonth(s.registerDate)).reduce((s,st)=>s + ((st.bookPaid?st.bookPrice||0:0) + (st.idCardPaid?st.idCardPrice||0:0)), 0);
-    const [jy,jm] = g2jParts(`${y}-${String(m+1).padStart(2,'0')}-01`);
-    return { label: AFG_MONTHS[jm-1], income, cost, profit: income-cost };
+    return { label: AFG_MONTHS[m-1], income, cost, profit: income-cost };
   });
   const max = Math.max(1, ...trend.map(d=>Math.max(d.income, d.cost, Math.abs(d.profit))));
   document.getElementById('books-trend-chart').innerHTML = trend.map(d=>`
@@ -3102,19 +3120,21 @@ function commitAttendanceSave(silent, classIdOverride){
   }
 }
 
+/* The last n Afghan calendar months, oldest first, ending with the current one. */
+function lastJalaliMonths(n){
+  let [y, m] = g2jParts(todayISO());
+  const out = [];
+  for(let i=0;i<n;i++){ out.unshift({y, m}); ({y, m} = prevJalaliMonth(y, m)); }
+  return out;
+}
 function monthlyTrendData(){
-  const now = new Date();
-  const months = [];
-  for(let i=5;i>=0;i--) months.push(new Date(now.getFullYear(), now.getMonth()-i, 1));
-  return months.map(d=>{
-    const y=d.getFullYear(), m=d.getMonth();
-    const inMonth = dateStr=>{ if(!dateStr) return false; const dd=new Date(dateStr+'T00:00:00'); return dd.getFullYear()===y && dd.getMonth()===m; };
+  return lastJalaliMonths(6).map(({y,m})=>{
+    const inMonth = dateStr=>dateInMonth(dateStr, y, m);
     const dons = db.donations.filter(x=>inMonth(x.date));
     const exps = db.expenses.filter(x=>inMonth(x.date));
     const income = dons.reduce((s,x)=>s+donationNetAmount(x),0);
     const cost = exps.reduce((s,x)=>s+(Number(x.amount)||0),0);
-    const [jy,jm] = g2jParts(`${y}-${String(m+1).padStart(2,'0')}-01`);
-    return { label: AFG_MONTHS[jm-1], income, cost, profit: income-cost };
+    return { label: AFG_MONTHS[m-1], income, cost, profit: income-cost };
   });
 }
 function renderMonthlyTrend(){
@@ -3289,6 +3309,7 @@ function renderAll(){
   if(document.getElementById('att-class-select') && document.getElementById('att-class-select').value) renderAttendanceGrid();
 }
 renderReportFilterChips();
+renderExpensesTimeOptions();
 renderClassesFilterChips();
 renderExpensesFilterChips();
 renderExportBars();
