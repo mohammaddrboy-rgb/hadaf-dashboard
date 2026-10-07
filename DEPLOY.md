@@ -1,3 +1,18 @@
+# Latest update: custom class types (October 2026)
+
+Shareholders and branch managers can now type an entirely new class type
+in the class form («نوع صنف» › «+ نوع صنف جدید…»). New types are saved in
+`db.classCategories` and offered for later classes.
+
+To deploy: merge the pull request into `main`, back up the data
+(step 2 below), then copy the static files (`index.html`, `js/`) into the
+web root as in step 3. **`server/server.js` did not change, so the sync
+server does not need a restart**, and nginx needs no change. Existing
+data works as is. Check: `curl -s https://SITE/ | grep -o 'js/app.js?v=[0-9.]*'`
+must print `js/app.js?v=5.2` or newer; then staff reload open tabs.
+
+---
+
 # Deploying the September 2026 update (PR #1)
 
 This file is for whoever updates the HADAF server (a person or a Claude

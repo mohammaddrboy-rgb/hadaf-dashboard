@@ -266,7 +266,7 @@ function importBackup(input){
   reader.onload = e=>{
     try{
       const parsed = JSON.parse(e.target.result);
-      db = Object.assign({ classes:[], students:[], teachers:[], donations:[], expenses:[], projects:[], meetings:[], seminars:[], teacherAdvances:[], studentProfiles:[], shareholders:[], bookPurchases:[], attendance:[], activityLog:[], discountCodes:[], assets:[], accessPins:{shareholder:'4545',manager:'2026',teacher:'1010'}, referralSettings:{referrerDiscount:5, refereeDiscount:10}, discountCodeSettings:{defaultDiscount:10, defaultCommission:5} }, parsed);
+      db = Object.assign({ classes:[], students:[], teachers:[], donations:[], expenses:[], projects:[], meetings:[], seminars:[], teacherAdvances:[], studentProfiles:[], shareholders:[], bookPurchases:[], attendance:[], activityLog:[], discountCodes:[], assets:[], classCategories:[], accessPins:{shareholder:'4545',manager:'2026',teacher:'1010'}, referralSettings:{referrerDiscount:5, refereeDiscount:10}, discountCodeSettings:{defaultDiscount:10, defaultCommission:5} }, parsed);
       save();
       alert('بازگردانی با موفقیت انجام شد.');
     }catch(err){
@@ -726,6 +726,66 @@ const BRANCHES = ['شعبه مرکزی','شعبه ۲','شعبه ۳'];
 const FAMILY_DISCOUNT_PERCENT = 25;
 const SEMINAR_TYPES = ['سمینار','وبینار','کارگاه'];
 const SEMINAR_MODES = ['حضوری','آنلاین','حضوری و آنلاین'];
+/* Class types: the built-in list above, plus the types shareholders/managers
+   typed themselves (db.classCategories, records {id,name} so that two devices
+   adding types at once merge instead of overwriting each other), plus any
+   type an existing class still uses. «سایر» stays last. */
+const NEW_CLASS_CATEGORY = '__new__';
+function normCategoryName(n){ return String(n||'').replace(/\s+/g,' ').trim(); }
+function customClassCategories(){ return (db.classCategories||[]).filter(x=>x && normCategoryName(x.name)); }
+function classCategoryList(){
+  const out = [], seen = new Set();
+  const add = n=>{ n = normCategoryName(n); const k = n.toLowerCase(); if(n && !seen.has(k)){ seen.add(k); out.push(n); } };
+  CLASS_CATEGORIES.filter(c=>c!=='سایر').forEach(add);
+  customClassCategories().forEach(x=>add(x.name));
+  (db.classes||[]).forEach(c=>add(c.category));
+  add('سایر');
+  return out;
+}
+function findClassCategory(name){
+  const k = normCategoryName(name).toLowerCase();
+  return classCategoryList().find(c=>c.toLowerCase()===k) || '';
+}
+function isCustomClassCategory(name){ return !CLASS_CATEGORIES.includes(name) && customClassCategories().some(x=>normCategoryName(x.name)===name); }
+function classCategoryOptionsHtml(selected){
+  return categoryOptionsHtml(classCategoryList(), selected) +
+    `<option value="${NEW_CLASS_CATEGORY}">+ نوع صنف جدید…</option>`;
+}
+function updateClassCategoryField(){
+  const sel = document.getElementById('f-cls-category');
+  if(!sel) return;
+  const isNew = sel.value===NEW_CLASS_CATEGORY;
+  document.getElementById('f-cls-category-new-box').style.display = isNew ? '' : 'none';
+  const del = document.getElementById('f-cls-category-del');
+  const unused = !db.classes.some(c=>c.category===sel.value);
+  del.style.display = (!isNew && isCustomClassCategory(sel.value) && unused) ? '' : 'none';
+  if(isNew) document.getElementById('f-cls-category-new').focus();
+}
+function removeClassCategory(){
+  const sel = document.getElementById('f-cls-category');
+  const name = sel.value;
+  if(!isCustomClassCategory(name) || db.classes.some(c=>c.category===name)) return;
+  if(!confirm(`نوع صنف «${name}» از فهرست حذف شود؟`)) return;
+  db.classCategories = customClassCategories().filter(x=>normCategoryName(x.name)!==name);
+  logAction('حذف', 'نوع صنف', name);
+  save();
+  sel.innerHTML = classCategoryOptionsHtml(CLASS_CATEGORIES[0]);
+  updateClassCategoryField();
+}
+/* Returns the category for the class form, registering a newly typed one; '' = invalid. */
+function classFormCategory(){
+  const v = document.getElementById('f-cls-category').value;
+  if(v!==NEW_CLASS_CATEGORY) return v;
+  const name = normCategoryName(document.getElementById('f-cls-category-new').value);
+  if(!name){ alert('نام نوع صنف جدید را بنویسید.'); return ''; }
+  if(name.length>80){ alert('نام نوع صنف حداکثر ۸۰ حرف باشد.'); return ''; }
+  const existing = findClassCategory(name);
+  if(existing) return existing;      // already in the list (any letter case): reuse it
+  if(!Array.isArray(db.classCategories)) db.classCategories = [];
+  db.classCategories.push({ id:uid(), name, createdAt:todayISO() });
+  logAction('ایجاد', 'نوع صنف', name);
+  return name;
+}
 function seminarLocationOptionsHtml(selected){
   return categoryOptionsHtml([...BRANCHES,'آنلاین'], selected);
 }
@@ -1141,7 +1201,16 @@ function openClassModal(id){
 
     <div class="field-row">
       <div class="field"><label>شعبه</label><select id="f-cls-branch">${categoryOptionsHtml(BRANCHES, c?c.branch:BRANCHES[0])}</select></div>
-      <div class="field"><label>دسته</label><select id="f-cls-category">${categoryOptionsHtml(CLASS_CATEGORIES, c?c.category:CLASS_CATEGORIES[0])}</select></div>
+      <div class="field"><label>نوع صنف</label>
+        <div style="display:flex; gap:6px;">
+          <select id="f-cls-category" style="flex:1;" onchange="updateClassCategoryField()">${classCategoryOptionsHtml(c?c.category:CLASS_CATEGORIES[0])}</select>
+          <button type="button" id="f-cls-category-del" class="btn ghost small" style="display:none;" title="این نوع در هیچ صنفی استفاده نشده است" onclick="removeClassCategory()">حذف نوع</button>
+        </div>
+      </div>
+    </div>
+    <div class="field" id="f-cls-category-new-box" style="display:none;"><label>نام نوع صنف جدید</label>
+      <input id="f-cls-category-new" maxlength="80" placeholder="مثلاً: زبان آلمانی، کمپیوتر، ریاضی کانکور">
+      <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">این نوع ذخیره می‌شود و برای صنف‌های بعدی هم در فهرست می‌آید.</div>
     </div>
     <div class="field"><label>نام صنف (اختیاری)</label><input id="f-cls-name" value="${esc(c?c.name||'':'')}" placeholder="مثلاً: جنرال انگلیسی - سطح مبتدی"></div>
     <div class="field"><label>مدرس</label>
@@ -1200,6 +1269,7 @@ function openClassModal(id){
   const wrap = document.getElementById('f-cls-start-wrap');
   if(wrap) wrap.addEventListener('change', updateClassSchedulePreview);
   updateClassSchedulePreview();
+  updateClassCategoryField();
   updateSharedClassFields();
 }
 /* Shows/labels the second-teacher fields of the class form. */
@@ -1263,11 +1333,13 @@ function saveClass(id){
       alert('برای محاسبهٔ حقوق مدرس ساعتی، ساعت آغاز و پایان صنف را وارد کنید.'); return;
     }
   }
+  const category = classFormCategory();
+  if(!category) return;
   const sessions = classSessionsFrom(jalaliPickerValue('f-cls-start'), sessionCount);
   const rec = {
     id: id || uid(),
     branch: document.getElementById('f-cls-branch').value,
-    category: document.getElementById('f-cls-category').value,
+    category,
     name: document.getElementById('f-cls-name').value.trim(),
     teacherId: t1,
     teacherSkills: shared ? document.getElementById('f-cls-skills1').value.trim() : '',
