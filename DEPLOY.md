@@ -1,3 +1,38 @@
+# Latest update: branch managers swapped (October 2026)
+
+The branch managers are now:
+
+- Aminullah Zafari — **شعبه مرکزی**
+- Sharif Wafa — **شعبه قلعه نو**
+- Barat Ebrahimi — **شعبه سرپل**
+
+When the sync server starts, it moves these three managers to these
+branches **once**, even if the previous update already gave them other
+branches. After that, a shareholder's change in «پرسنل و مدرسان» stays.
+
+## Steps
+
+1. Merge the pull request into `main`.
+2. Back up the data:
+   `sudo cp -a /var/www/hadaf-data /var/www/hadaf-data.backup-$(date +%Y%m%d-%H%M)`
+3. Pull `main` and copy `index.html` and `js/` into the web root (only
+   `js/branch-scope.js` and `index.html` changed).
+4. **Restart the sync server** (e.g. `sudo systemctl restart hadaf-sync`).
+   The reassignment runs at start; `server/server.js` itself is unchanged
+   but loads the updated `js/branch-scope.js` from the `js/` folder next to
+   `server/` (copy it there too if the service runs from a separate folder).
+5. Check:
+   - the server log shows `updated branch names / branch managers in stored data`;
+   - `curl -s https://SITE/ | grep -o 'js/branch-scope.js?v=[0-9.]*'` prints `js/branch-scope.js?v=1.1`;
+   - the managers' branches:
+     `sudo node -e 'const d=require("/var/www/hadaf-data/db.json");d.teachers.filter(t=>t.role==="مدیریت").forEach(t=>console.log(t.name,"=>",t.branch||"(none)"))'`
+     must show Aminullah Zafari => شعبه مرکزی, Sharif Wafa => شعبه قلعه نو,
+     Barat Ebrahimi => شعبه سرپل. If a name is spelled so it isn't
+     matched, a shareholder sets the branch in the dashboard.
+6. Managers who are logged in see their new branch after reloading the page.
+
+---
+
 # Latest update: branches and branch managers (October 2026)
 
 What changes:
