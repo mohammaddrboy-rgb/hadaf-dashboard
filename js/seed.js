@@ -1068,7 +1068,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "c5",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "category": "جنرال انگلیسی (General English)",
       "name": "جنرال انگلیسی - سطح متوسط",
       "teacherId": "t1",
@@ -1084,7 +1084,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "c6",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "category": "تافل (TOEFL)",
       "name": "تافل فشرده",
       "teacherId": "t2",
@@ -1100,7 +1100,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "c7",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "category": "کودکان و نوجوانان (Kids/Teens)",
       "name": "صنف کودکان - سطح دو",
       "teacherId": "t3",
@@ -1116,7 +1116,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "c8",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "category": "آیلتس (IELTS)",
       "name": "آیلتس - عصر",
       "teacherId": "t4",
@@ -1132,7 +1132,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "c9",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "category": "جنرال انگلیسی (General English)",
       "name": "جنرال انگلیسی - سطح پیشرفته",
       "teacherId": "t5",
@@ -1148,7 +1148,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "c10",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "category": "مکالمه (Conversation)",
       "name": "مکالمه - مبتدی",
       "teacherId": "t6",
@@ -1164,7 +1164,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "c11",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "category": "کودکان و نوجوانان (Kids/Teens)",
       "name": "صنف کودکان - تابستانی",
       "teacherId": "t3",
@@ -1180,7 +1180,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "c12",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "category": "آیلتس (IELTS)",
       "name": "آیلتس - فشردهٔ ویژه",
       "teacherId": "t4",
@@ -2466,7 +2466,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "e2",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "category": "اجارهٔ شعبه",
       "amount": 20000,
       "date": "2026-08-01",
@@ -2474,7 +2474,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "e3",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "category": "اجارهٔ شعبه",
       "amount": 18000,
       "date": "2026-08-01",
@@ -2490,7 +2490,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "e5",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "category": "قبض و خدمات (برق/آب/گاز/اینترنت)",
       "amount": 3600,
       "date": "2026-08-02",
@@ -2498,7 +2498,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "e6",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "category": "قبض و خدمات (برق/آب/گاز/اینترنت)",
       "amount": 3100,
       "date": "2026-08-02",
@@ -2514,7 +2514,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "e8",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "category": "تبلیغات و بازاریابی",
       "amount": 5000,
       "date": "2026-07-25",
@@ -2522,7 +2522,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "e9",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "category": "پذیرایی",
       "amount": 1500,
       "date": "2026-08-03",
@@ -2538,7 +2538,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "e11",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "category": "سایر",
       "amount": 2200,
       "date": "2026-07-18",
@@ -2546,7 +2546,7 @@ window.HADAF_SEED = {
     },
     {
       "id": "e12",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "category": "لوازم آموزشی",
       "amount": 4300,
       "date": "2026-08-01",
@@ -2678,7 +2678,7 @@ window.HADAF_SEED = {
       "title": "سمینار مسیر شغلی با مهارت زبان انگلیسی",
       "type": "سمینار",
       "mode": "حضوری",
-      "location": "شعبه ۲",
+      "location": "شعبه قلعه نو",
       "speakerId": "t2",
       "date": "2026-08-20",
       "attendeeCount": 35,
@@ -2692,7 +2692,7 @@ window.HADAF_SEED = {
       "title": "کارگاه نویسندگی برای تافل",
       "type": "کارگاه",
       "mode": "حضوری",
-      "location": "شعبه ۳",
+      "location": "شعبه سرپل",
       "speakerId": "t4",
       "date": "2026-09-15",
       "attendeeCount": 0,
@@ -2799,7 +2799,7 @@ window.HADAF_SEED = {
       "id": "bp2",
       "title": "IELTS Cambridge Practice Tests",
       "source": "کتاب‌فروشی سعیدی",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "quantity": 20,
       "unitCost": 450,
       "totalCost": 9000,
@@ -2813,7 +2813,7 @@ window.HADAF_SEED = {
       "id": "bp3",
       "title": "Kids English Starter",
       "source": "مطبعهٔ آریانا",
-      "branch": "شعبه ۳",
+      "branch": "شعبه سرپل",
       "quantity": 25,
       "unitCost": 180,
       "totalCost": 4500,
@@ -2827,7 +2827,7 @@ window.HADAF_SEED = {
       "id": "bp4",
       "title": "TOEFL iBT Prep Book",
       "source": "کتاب‌فروشی سعیدی",
-      "branch": "شعبه ۲",
+      "branch": "شعبه قلعه نو",
       "quantity": 15,
       "unitCost": 400,
       "totalCost": 6000,

@@ -1,15 +1,56 @@
-# Latest update: custom class types (October 2026)
+# Latest update: branches and branch managers (October 2026)
 
-Shareholders and branch managers can now type an entirely new class type
-in the class form («نوع صنف» › «+ نوع صنف جدید…»). New types are saved in
-`db.classCategories` and offered for later classes.
+What changes:
 
-To deploy: merge the pull request into `main`, back up the data
-(step 2 below), then copy the static files (`index.html`, `js/`) into the
-web root as in step 3. **`server/server.js` did not change, so the sync
-server does not need a restart**, and nginx needs no change. Existing
-data works as is. Check: `curl -s https://SITE/ | grep -o 'js/app.js?v=[0-9.]*'`
-must print `js/app.js?v=5.2` or newer; then staff reload open tabs.
+- Branches are renamed: شعبه ۲ → **شعبه قلعه نو**, شعبه ۳ → **شعبه سرپل**
+  (شعبه مرکزی stays). Existing data is renamed automatically.
+- Each branch manager sees and changes only their own branch: classes,
+  their students and attendance, expenses, book purchases, other income
+  and seminars (plus online seminars). The **server** enforces this: it
+  sends a manager only their branch, and ignores any change they send for
+  another branch. Shareholders still see everything.
+- The managers get their branch automatically when the server starts:
+  Sharif Wafa → شعبه مرکزی, Aminullah Zafari → شعبه قلعه نو,
+  Barat Ibrahimi → شعبه سرپل (matched by name, Persian or English
+  spelling, only for personnel with role «مدیریت»). Anyone else, or a name
+  spelled differently, is set by a shareholder in «پرسنل و مدرسان» ›
+  edit › «شعبه». A manager without a branch sees no branch data and gets
+  a notice saying so.
+- The class list in student registration now also shows the teacher(s)
+  and the start date of each class.
+
+## Steps
+
+1. Merge the pull request into `main`.
+2. Back up the data:
+   `sudo cp -a /var/www/hadaf-data /var/www/hadaf-data.backup-$(date +%Y%m%d-%H%M)`
+3. Pull `main` and copy `index.html`, `css/` and `js/` into the web root as
+   in earlier deploys. **`js/` now has a new file, `js/branch-scope.js`.**
+4. **`server/server.js` changed: restart the sync server** (e.g.
+   `sudo systemctl restart hadaf-sync`), same environment as before. The
+   server loads `../js/branch-scope.js` relative to `server/server.js`, so
+   the `js/` folder must sit next to the `server/` folder the service runs
+   from (it does in the standard layout `/var/www/hadaf/server/server.js` +
+   `/var/www/hadaf/js/`). If it's missing, the server stops at start with
+   "Cannot find module" — copy `js/branch-scope.js` there and restart.
+   nginx needs no change.
+5. Check:
+   - `sudo journalctl -u hadaf-sync -n 20` (or the pm2 log) shows
+     `updated branch names / branch managers in stored data` once.
+   - `curl -s https://SITE/api/health` returns `{"ok":true,...}`.
+   - `curl -s https://SITE/ | grep -o 'js/app.js?v=[0-9.]*'` prints
+     `js/app.js?v=5.3`.
+   - Make sure every manager got a branch:
+     `sudo node -e 'const d=require("/var/www/hadaf-data/db.json");d.teachers.filter(t=>t.role==="مدیریت").forEach(t=>console.log(t.name,"=>",t.branch||"(none)"))'`
+     If one shows `(none)`, a shareholder sets it in the dashboard.
+   - In a browser, log in as a branch manager: a blue line under the header
+     names their branch, and classes/expenses show only that branch.
+6. Staff reload every open dashboard tab.
+
+Rolling back: deploy the previous `main` commit (static files and
+`server/server.js`), restart the server. The renamed branches and the
+managers' `branch` field stay in the data; the old code shows the new
+names and ignores the field.
 
 ---
 

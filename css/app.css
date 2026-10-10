@@ -1106,3 +1106,10 @@ html.has-motion .modal { animation: none; }
   .app { display: block; }
   .panel, .card { box-shadow: none; border-color: #ccc; break-inside: avoid; }
 }
+
+/* Branch manager: which branch this view is limited to */
+.branch-notice {
+  margin: 0 0 18px; padding: 10px 14px; border-radius: var(--radius-sm);
+  background: var(--info-bg); color: var(--info); font-size: 13px; font-weight: 600;
+}
+.branch-notice.warn { background: var(--warn-bg); color: var(--warn); }

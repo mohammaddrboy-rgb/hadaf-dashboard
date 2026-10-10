@@ -21,7 +21,9 @@
  *
  * What each role gets:
  *   - shareholder: everything, including login passwords (they manage them).
- *   - manager / teacher / employee: everything except passwords (replaced by
+ *   - manager: like teacher/employee below, but only their own branch's data
+ *     (js/branch-scope.js); their writes can't change other branches' data.
+ *   - teacher / employee: everything except passwords (replaced by
  *     HIDDEN_PASSWORD). Their writes can't change passwords of existing people,
  *     shareholder records or assets.
  *   - student: only their own profile, enrollments, attendance and the class
@@ -32,12 +34,15 @@
  *   HOST           (default 127.0.0.1)
  *   HADAF_DATA_DIR (default /var/www/hadaf-data)
  *   STATIC_DIR     (optional) if set, also serves static files from it (local testing only)
+ *
+ * Needs ../js/branch-scope.js next to this folder (the site's js/ folder).
  * ============================================================ */
 'use strict';
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const Scope = require(path.join(__dirname, '..', 'js', 'branch-scope.js'));
 
 const PORT = Number(process.env.PORT || 8791);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -174,6 +179,10 @@ function viewFor(session, data) {
   const copy = JSON.parse(JSON.stringify(data));
   if (session.role === 'student') return studentView(copy, session.actorId);
   if (session.role !== 'shareholder') hidePasswords(copy);
+  if (session.role === 'manager') {
+    const me = findActor(data, 'manager', session.actorId) || {};
+    Scope.scopeView(copy, Scope.managerBranch(data, session.actorId), session.actorId, me.name || '');
+  }
   return copy;
 }
 /* Rejects data whose record ids could break out of the page's HTML/JS. */
@@ -323,6 +332,12 @@ function handlePutDb(req, res) {
     if (current && !force && payload.baseVersion !== meta.version) {
       return sendJson(res, 409, { ok: false, conflict: true, version: meta.version, data: viewFor(session, current) });
     }
+    Scope.migrate(payload.data);   // old branch names from a tab still running old code
+    if (current && session && session.role === 'manager') {
+      const me = findActor(current, 'manager', session.actorId) || {};
+      Scope.mergeWrite(payload.data, current, Scope.managerBranch(current, session.actorId), session.actorId, me.name || '');
+    }
+    Scope.fixDuplicateCodes(payload.data, current);
     protectOnWrite(session, payload.data, current);
     try {
       writeAtomic(DB_FILE, JSON.stringify(payload.data));
@@ -354,10 +369,22 @@ const server = http.createServer((req, res) => {
   }
 });
 
+/* Renames old branches and assigns the named branch managers in the stored
+   data once, so managers see their branch from their first login. */
+function migrateStoredData() {
+  const data = readData();
+  if (!data || !Scope.migrate(data)) return;
+  const meta = readMeta();
+  writeAtomic(DB_FILE, JSON.stringify(data));
+  writeAtomic(META_FILE, JSON.stringify({ version: (meta.version || 0) + 1, updatedAt: new Date().toISOString() }));
+  console.log('hadaf-sync: updated branch names / branch managers in stored data');
+}
+
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
     ensureDir();
+    try { migrateStoredData(); } catch (e) { console.error('branch migration failed', e); }
     console.log('hadaf-sync listening on ' + HOST + ':' + PORT + ' data=' + DATA_DIR + (STATIC_DIR ? ' static=' + STATIC_DIR : ''));
   });
 }
-module.exports = { server, HIDDEN_PASSWORD };
+module.exports = { server, HIDDEN_PASSWORD, migrateStoredData };
