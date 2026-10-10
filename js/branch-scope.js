@@ -3,6 +3,9 @@
  * Shared by the browser (window.HadafBranchScope) and the sync server
  * (require('../js/branch-scope.js')), so both apply the same rules.
  *
+ * Branch managers: Aminullah Zafari — شعبه مرکزی, Sharif Wafa — شعبه قلعه نو,
+ * Barat Ebrahimi — شعبه سرپل (KNOWN_MANAGERS below).
+ *
  * A branch manager (personnel role «مدیریت») works in one branch, stored
  * on their personnel record as `branch`. They see only that branch's:
  *   classes (branch), enrollments and attendance of those classes, student
@@ -33,10 +36,13 @@
   // Branch managers named by the academy; each inner list is one part of the
   // name (any spelling in it may match).
   var KNOWN_MANAGERS = [
-    { branch: BRANCHES[0], parts: [['شریف', 'sharif'], ['وفا', 'wafa']] },
-    { branch: BRANCHES[1], parts: [['امین', 'amin'], ['ظفری', 'zafari']] },
+    { branch: BRANCHES[0], parts: [['امین', 'amin'], ['ظفری', 'zafari']] },
+    { branch: BRANCHES[1], parts: [['شریف', 'sharif'], ['وفا', 'wafa']] },
     { branch: BRANCHES[2], parts: [['برات', 'barat'], ['ابراهیمی', 'ibrahimi', 'ebrahimi']] },
   ];
+  // Bumped when the list above changes: the named managers are then moved to
+  // their listed branch once, even if a branch was already set.
+  var MANAGER_ASSIGNMENT = 2;
   // Collections whose records belong to a branch (everything else is shared).
   var SCOPED = ['classes', 'students', 'studentProfiles', 'attendance', 'expenses', 'bookPurchases',
     'donations', 'seminars', 'teachers', 'teacherAdvances', 'advanceRequests', 'discountCodes',
@@ -58,8 +64,10 @@
   }
 
   /* Renames old branches everywhere and gives the named managers their
-     branch (only managers whose branch was never set). Returns true when
-     something changed. Safe to run any number of times. */
+     branch: once per MANAGER_ASSIGNMENT for the named managers, otherwise
+     only to managers whose branch was never set (so a shareholder's later
+     choice stays). Returns true when something changed. Safe to run any
+     number of times. */
   function migrate(data) {
     if (!isObj(data)) return false;
     var changed = false;
@@ -70,11 +78,13 @@
         if (k === 'seminars' && typeof r.location === 'string' && RENAMES[r.location.trim()]) { r.location = RENAMES[r.location.trim()]; changed = true; }
       });
     });
+    var reassign = data.managerBranchAssignment !== MANAGER_ASSIGNMENT;
     arr(data.teachers).forEach(function (t) {
-      if (!isObj(t) || t.role !== MANAGER_ROLE || t.branch !== undefined) return;
+      if (!isObj(t) || t.role !== MANAGER_ROLE || (t.branch !== undefined && !reassign)) return;
       var b = knownManagerBranch(t.name);
-      if (b) { t.branch = b; changed = true; }
+      if (b && t.branch !== b) { t.branch = b; changed = true; }
     });
+    if (reassign) { data.managerBranchAssignment = MANAGER_ASSIGNMENT; changed = true; }
     return changed;
   }
 
