@@ -190,6 +190,7 @@
     db = data;
     window.db = data;
     if (typeof migrateLegacyData === 'function') migrateLegacyData();
+    if (typeof applyManagerScope === 'function') applyManagerScope();
     if (typeof persistLocal === 'function') persistLocal();
     if (typeof populateGateSelects === 'function') populateGateSelects();
     if (typeof renderAll === 'function') renderAll();

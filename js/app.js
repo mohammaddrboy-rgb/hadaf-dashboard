@@ -234,6 +234,7 @@ function migrateLegacyData(){
     });
     changed = true;
   }
+  if(HadafBranchScope.migrate(db)) changed = true; // new branch names, named branch managers
   if(changed) persistLocal();
 }
 let migrationGeneratedPasswords = [];
@@ -505,6 +506,34 @@ function navAllowed(view){
   if(currentRole==='employee') return view==='classes' || view==='students' || view==='seminars' || view==='books' || view==='discountCodes';
   return false;
 }
+/* ---------------- Branch managers ----------------
+   A branch manager only sees and edits their own branch (js/branch-scope.js).
+   The server already sends them only that part; trimming the local copy too
+   also covers data this browser kept from an earlier user. */
+function myBranch(){ return currentRole==='manager' ? HadafBranchScope.managerBranch(db, currentTeacherId) : ''; }
+function isBranchManager(){ return currentRole==='manager'; }
+function visibleBranches(){ return isBranchManager() ? [myBranch()].filter(Boolean) : BRANCHES; }
+function applyManagerScope(){
+  if(!isBranchManager() || !db || db.__view) return;
+  HadafBranchScope.scopeView(db, myBranch(), currentTeacherId, currentActorName);
+  persistLocal();
+}
+function renderBranchNotice(){
+  const el = document.getElementById('branch-notice');
+  if(!el) return;
+  if(isBranchManager()){
+    const b = myBranch();
+    el.style.display = '';
+    el.className = 'branch-notice' + (b ? '' : ' warn');
+    el.textContent = b ? `شما مدیر ${b} هستید؛ فقط اطلاعات همین شعبه را می‌بینید.`
+      : 'شعبهٔ شما هنوز تعیین نشده است؛ تا وقتی سهامدار در «پرسنل و مدرسان» شعبهٔ شما را تعیین نکند، اطلاعات هیچ شعبه‌ای نمایش داده نمی‌شود.';
+  } else el.style.display = 'none';
+  // Branch filter chips depend on who is logged in.
+  if(classBranchFilter!=='all' && !visibleBranches().includes(classBranchFilter)) classBranchFilter = 'all';
+  if(expenseBranchFilter!=='all' && !visibleBranches().includes(expenseBranchFilter)) expenseBranchFilter = 'all';
+  renderClassesFilterChips();
+  renderExpensesFilterChips();
+}
 function applyRoleVisibility(){
   document.querySelectorAll('.navbtn').forEach(b=>{
     b.style.display = navAllowed(b.dataset.view) ? '' : 'none';
@@ -517,6 +546,7 @@ function applyRoleVisibility(){
   if(badge) badge.textContent = currentRole ? `${ROLE_LABELS[currentRole]} · ${currentActorName}` : 'وارد نشده';
   const sideRole = document.getElementById('sidebar-role-text');
   if(sideRole) sideRole.textContent = currentRole ? `${ROLE_LABELS[currentRole]} · ${currentActorName}` : 'ورود نشده';
+  renderBranchNotice();
 }
 function showAccessGate(){
   document.getElementById('access-gate').classList.add('active');
@@ -596,6 +626,7 @@ function completeLogin(role, actorId, actorName){
   sessionStorage.setItem('hadaf_actor_name', actorName);
   document.querySelectorAll('#access-gate input[type="password"]').forEach(i=>i.value='');
   hideAccessGate();
+  applyManagerScope();
   applyRoleVisibility();
 
   // Navigate to hash view if valid for this role, else default role view
@@ -722,7 +753,7 @@ const CLASS_CATEGORIES = ['جنرال انگلیسی (General English)','آیل�
 const DONATION_METHODS = ['نقدی','سایر'];
 const EXPENSE_CATEGORIES = ['حقوق و دستمزد مدرسان','اجارهٔ شعبه','قبض و خدمات (برق/آب/گاز/اینترنت)','لوازم آموزشی','تبلیغات و بازاریابی','پذیرایی','سایر'];
 const PROJECT_CATEGORIES = ['کمپین تبلیغاتی','دورهٔ فشرده/کارگاه','آزمون آزمایشی (Mock Test)','مراسم فارغ‌التحصیلی','همکاری با نهاد دیگر','سایر'];
-const BRANCHES = ['شعبه مرکزی','شعبه ۲','شعبه ۳'];
+const BRANCHES = HadafBranchScope.BRANCHES; // شعبه مرکزی، شعبه قلعه نو، شعبه سرپل (js/branch-scope.js)
 const FAMILY_DISCOUNT_PERCENT = 25;
 const SEMINAR_TYPES = ['سمینار','وبینار','کارگاه'];
 const SEMINAR_MODES = ['حضوری','آنلاین','حضوری و آنلاین'];
@@ -787,7 +818,13 @@ function classFormCategory(){
   return name;
 }
 function seminarLocationOptionsHtml(selected){
-  return categoryOptionsHtml([...BRANCHES,'آنلاین'], selected);
+  return categoryOptionsHtml([...visibleBranches(),'آنلاین'], selected);
+}
+/* Branch choices for a form: a branch manager only gets their own branch. */
+function branchOptionsHtml(selected){
+  const list = visibleBranches();
+  if(!list.length) return '<option value="">شعبهٔ شما تعیین نشده است</option>';
+  return categoryOptionsHtml(list, list.includes(selected) ? selected : list[0]);
 }
 
 /* ---------------- Timeframes & Excel export ---------------- */
@@ -882,7 +919,7 @@ function teachersToRows(list){
   return list.map(t=>{
     const classes = teacherClassesList(t.id);
     const pf = teacherPassFailStats(t.id);
-    return { 'کد': t.code||'', 'نام': t.name, 'نقش': t.role||'', 'شماره تماس': t.phone||'', 'مضامین': t.subjects||'',
+    return { 'کد': t.code||'', 'نام': t.name, 'نقش': t.role||'', 'شعبه': t.branch||'', 'شماره تماس': t.phone||'', 'مضامین': t.subjects||'',
       'آغاز قرارداد': t.contractStart?toJalali(t.contractStart):'', 'پایان قرارداد': t.contractEnd?toJalali(t.contractEnd):'نامشخص',
       'نوع پرداخت': payTypeLabel(t), 'مبلغ (افغانی)': t.payAmount||0,
       'ساعات توافق‌شده در روز': t.payType===PAY_HOURLY ? (t.dailyHours||0) : '', 'نرخ هر ساعت (افغانی)': t.payType===PAY_HOURLY ? teacherHourlyRate(t) : '',
@@ -896,7 +933,7 @@ function teachersToRows(list){
   });
 }
 function donationsToRows(list){
-  return list.map(d=>({ 'منبع درآمد': d.donorName, 'مبلغ (افغانی)': d.amount||0, 'درصد تخفیف': d.discountPercent||0, 'مبلغ نهایی (افغانی)': netAfterDiscount(d.amount, d.discountPercent), 'تاریخ': toJalali(d.date), 'روش': d.method, 'توضیحات': d.note||'' }));
+  return list.map(d=>({ 'منبع درآمد': d.donorName, 'مبلغ (افغانی)': d.amount||0, 'درصد تخفیف': d.discountPercent||0, 'مبلغ نهایی (افغانی)': netAfterDiscount(d.amount, d.discountPercent), 'تاریخ': toJalali(d.date), 'روش': d.method, 'شعبه': d.branch||'عمومی', 'توضیحات': d.note||'' }));
 }
 function seminarsToRows(list){
   return list.map(s=>({
@@ -1182,7 +1219,7 @@ function studentStatusTagClass(st){
 function classOptionsHtml(selectedId){
   if(!db.classes.length) return '<option value="">ابتدا یک صنف بسازید</option>';
   return '<option value="">انتخاب کنید</option>' + db.classes.map(c=>
-    `<option value="${esc(c.id)}" ${c.id===selectedId?'selected':''}>${esc(c.name||c.category)} · ${esc(c.branch||'-')}${esc(c.startTime?' · '+classTimeLabel(c):'')} (${esc(classStatus(c))})</option>`
+    `<option value="${esc(c.id)}" ${c.id===selectedId?'selected':''}>${esc(c.name||c.category)} · ${esc(c.branch||'-')}${esc(c.startTime?' · '+classTimeLabel(c):'')} · مدرس: ${esc(classTeacherIds(c).map(teacherName).join(' و ')||'-')} · آغاز: ${esc(c.startDate?toJalali(c.startDate):'-')} (${esc(classStatus(c))})</option>`
   ).join('');
 }
 function teacherOptionsHtml(selectedId){
@@ -1200,7 +1237,7 @@ function openClassModal(id){
     <p class="sub">نوع فعالیت، مدرس، تاریخ آغاز/پایان و ظرفیت صنف را وارد کنید</p>
 
     <div class="field-row">
-      <div class="field"><label>شعبه</label><select id="f-cls-branch">${categoryOptionsHtml(BRANCHES, c?c.branch:BRANCHES[0])}</select></div>
+      <div class="field"><label>شعبه</label><select id="f-cls-branch">${branchOptionsHtml(c?c.branch:'')}</select></div>
       <div class="field"><label>نوع صنف</label>
         <div style="display:flex; gap:6px;">
           <select id="f-cls-category" style="flex:1;" onchange="updateClassCategoryField()">${classCategoryOptionsHtml(c?c.category:CLASS_CATEGORIES[0])}</select>
@@ -1398,7 +1435,7 @@ function openSeminarModal(id){
       <div class="field"><label>شیوه</label><select id="f-sem-mode">${categoryOptionsHtml(SEMINAR_MODES, s?s.mode:SEMINAR_MODES[0])}</select></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>شعبه/مکان</label><select id="f-sem-location">${seminarLocationOptionsHtml(s?s.location:BRANCHES[0])}</select></div>
+      <div class="field"><label>شعبه/مکان</label><select id="f-sem-location">${seminarLocationOptionsHtml(s?s.location:(visibleBranches()[0]||'آنلاین'))}</select></div>
       <div class="field"><label>ارائه‌دهنده</label>
         <div style="display:flex; gap:6px;">
           <select id="f-sem-speaker" style="flex:1;">${teacherOptionsHtml(s?s.speakerId:'')}</select>
@@ -1635,6 +1672,7 @@ function saveStudent(id){
         guardianName: document.getElementById('f-st-guardian').value.trim(),
         guardianPhone: document.getElementById('f-st-phone').value.trim(),
         photo: pendingStudentPhoto || '', idPhoto: pendingStudentIdPhoto || '', note: '', createdAt: regDate,
+        branch: (db.classes.find(c=>c.id===document.getElementById('f-st-class').value)||{}).branch || myBranch(),
       };
       newProfile.password = studentLoginPassword(newProfile);
       db.studentProfiles.unshift(newProfile);
@@ -1808,7 +1846,10 @@ function openTeacherModal(id){
       <div class="field"><label>نام</label><input id="f-t-name" value="${esc(t?t.name:'')}"></div>
       <div class="field"><label>نقش</label><select id="f-t-role">${personnelRoleOptionsHtml(t?t.role:'مدرس')}</select></div>
     </div>
-    <div class="field"><label>شماره تماس</label><input id="f-t-phone" value="${esc(t?t.phone||'':'')}"></div>
+    <div class="field-row">
+      <div class="field"><label>شماره تماس</label><input id="f-t-phone" value="${esc(t?t.phone||'':'')}"></div>
+      <div class="field"><label>شعبه (برای مدیر شعبه الزامی)</label>${personnelBranchFieldHtml(t)}</div>
+    </div>
     <div class="field"><label>مضامین/تخصص (برای مدرسان)</label><input id="f-t-subjects" value="${esc(t?t.subjects||'':'')}" placeholder="مثلاً: جنرال انگلیسی، آیلتس"></div>
 
     <div class="sectiontitle">قرارداد</div>
@@ -1887,6 +1928,16 @@ function updateTeacherPayField(){
     hint.textContent = 'نوع پرداخت را انتخاب کنید.';
   }
 }
+/* Home branch of a staff member. For a branch manager it is the branch they
+   manage; only shareholders change it (a manager's new staff join their branch). */
+function personnelBranchFieldHtml(t){
+  if(isBranchManager()){
+    const b = t ? (t.branch||'') : myBranch();
+    return `<select id="f-t-branch" disabled><option value="${esc(b)}">${esc(b||'بدون شعبهٔ مشخص')}</option></select>`;
+  }
+  const cur = t ? (t.branch||'') : '';
+  return `<select id="f-t-branch"><option value="">بدون شعبهٔ مشخص</option>${categoryOptionsHtml(BRANCHES, cur)}</select>`;
+}
 function saveTeacher(id){
   const payType = document.getElementById('f-t-paytype').value;
   if(!payType){ alert('نوع پرداخت را انتخاب کنید.'); return; }
@@ -1901,11 +1952,14 @@ function saveTeacher(id){
   const hasEnd = document.getElementById('f-t-has-cend').checked;
   const createdAt = existing ? (existing.createdAt||todayISO()) : todayISO();
   const role = document.getElementById('f-t-role').value;
+  const branch = isBranchManager() ? (existing ? (existing.branch||'') : myBranch()) : document.getElementById('f-t-branch').value;
+  if(role===HadafBranchScope.MANAGER_ROLE && !branch){ alert('برای مدیر شعبه، شعبه را انتخاب کنید.'); return; }
   const rec = {
     id: id || uid(),
     code: existing ? existing.code : generatePersonnelCode(role, createdAt),
     name: document.getElementById('f-t-name').value.trim() || 'بدون‌نام',
     role,
+    branch,
     phone: document.getElementById('f-t-phone').value.trim(),
     subjects: document.getElementById('f-t-subjects').value.trim(),
     contractStart: jalaliPickerValue('f-t-cstart'),
@@ -1976,7 +2030,7 @@ function openTeacherProfileModal(teacherId){
 
   openModal(`
     <h3>پروندهٔ پرسنل</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span> · نقش: ${esc(t.role||'مدرس')}</p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span> · نقش: ${esc(t.role||'مدرس')}${t.branch?` · ${esc(t.branch)}`:''}</p>
     ${passwordBlock}
     ${typeof teacherAdvanceAdminHtml==='function' ? teacherAdvanceAdminHtml(t) : ''}
     <div class="profile-grid">
@@ -2224,7 +2278,7 @@ function paySalary(teacherId){
   const partsText = salaryBreakdownText(t, bd);
   if(!confirm(`حقوق خالص ماه ${period}: ${afn(net)} برای «${t.name}» به‌عنوان هزینه ثبت شود؟ (ناخالص: ${afn(gross)}${salaryHasBreakdown(t, bd)?' = '+partsText:''}، مالیات ${faDigits(teacherTaxPercent())}٪: ${afn(tax)}، پیش‌پرداخت کسرشده: ${afn(advance)})\nشعبهٔ هزینه را می‌توانید بعداً از صفحهٔ «هزینه‌های روزانه» ویرایش کنید.`)) return;
   db.expenses.unshift({
-    id: uid(), branch: BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
+    id: uid(), branch: myBranch() || BRANCHES[0], category: 'حقوق و دستمزد مدرسان', amount: net, date: todayISO(),
     note: `حقوق ${t.name} · ${period}`,
     teacherId: teacherId, salaryGross: gross, salaryFixed: bd.fixed, salaryPercentShare: bd.percent, salaryOvertime: bd.overtime, salaryOvertimeHours: bd.overtimeHours, salarySharedDeduction: bd.sharedDeduction, salaryTax: tax, salaryTaxPercent: teacherTaxPercent(), salaryAdvance: advance,
     salaryPeriodJY: y, salaryPeriodJM: m,
@@ -2246,7 +2300,10 @@ function openDonationModal(id){
       <div class="field"><label>درصد تخفیف</label><input id="f-d-discount" type="number" min="0" max="100" value="${esc(d&&d.discountPercent?d.discountPercent:0)}" oninput="updateDonationCalc()"></div>
     </div>
     <div class="calc-box"><span>مبلغ نهایی بعد از تخفیف</span><b id="f-d-net-display">${afn(netAfterDiscount(d?d.amount:0, d?d.discountPercent:0))}</b></div>
-    <div class="field" style="margin-top:12px;"><label>روش</label><select id="f-d-method">${categoryOptionsHtml(DONATION_METHODS, d?d.method:DONATION_METHODS[0])}</select></div>
+    <div class="field-row" style="margin-top:12px;">
+      <div class="field"><label>روش</label><select id="f-d-method">${categoryOptionsHtml(DONATION_METHODS, d?d.method:DONATION_METHODS[0])}</select></div>
+      <div class="field"><label>شعبه</label><select id="f-d-branch">${isBranchManager() ? branchOptionsHtml(d?d.branch:'') : `<option value="">عمومی (بدون شعبه)</option>${categoryOptionsHtml(BRANCHES, d?d.branch||'':'')}`}</select></div>
+    </div>
     <div class="field"><label>تاریخ</label>${jalaliPicker('f-d-date', d?d.date:null)}</div>
     <div class="field"><label>توضیحات</label><input id="f-d-note" value="${esc(d?d.note||'':'')}"></div>
     <div class="modal-actions">
@@ -2268,6 +2325,7 @@ function saveDonation(id){
     amount: moneyNum('f-d-amount'),
     discountPercent: Number(document.getElementById('f-d-discount').value)||0,
     method: document.getElementById('f-d-method').value,
+    branch: document.getElementById('f-d-branch').value,
     date: jalaliPickerValue('f-d-date'),
     note: document.getElementById('f-d-note').value.trim(),
   };
@@ -2285,7 +2343,7 @@ function openExpenseModal(id){
   openModal(`
     <h3>${e?'ویرایش هزینه':'هزینه جدید'}</h3>
     <div class="field-row">
-      <div class="field"><label>شعبه</label><select id="f-e-branch">${categoryOptionsHtml(BRANCHES, e?e.branch:BRANCHES[0])}</select></div>
+      <div class="field"><label>شعبه</label><select id="f-e-branch">${branchOptionsHtml(e?e.branch:'')}</select></div>
       <div class="field"><label>دسته</label><select id="f-e-category">${categoryOptionsHtml(EXPENSE_CATEGORIES, e?e.category:EXPENSE_CATEGORIES[0])}</select></div>
     </div>
     <div class="field"><label>مبلغ</label><input id="f-e-amount" class="money-input" value="${esc(e&&e.amount?numFmt(e.amount):'')}" oninput="formatMoneyInput(this)"></div>
@@ -2469,7 +2527,7 @@ let classBranchFilter = 'all';
 function renderClassesFilterChips(){
   document.getElementById('classes-filters').innerHTML =
     `<button class="chip ${classBranchFilter==='all'?'active':''}" data-branch="all">همهٔ شعبه‌ها</button>` +
-    BRANCHES.map(b=>`<button class="chip ${classBranchFilter===b?'active':''}" data-branch="${esc(b)}">${esc(b)}</button>`).join('');
+    visibleBranches().map(b=>`<button class="chip ${classBranchFilter===b?'active':''}" data-branch="${esc(b)}">${esc(b)}</button>`).join('');
 }
 document.getElementById('classes-filters').addEventListener('click', e=>{
   const chip = e.target.closest('.chip'); if(!chip) return;
@@ -2622,7 +2680,7 @@ function renderTeachers(){
       : `${esc(teacherPayLabel(t))} <span style="color:var(--text-faint);">(${esc(payTypeLabel(t))})</span>`;
     return `<tr>
       <td><span class="code-badge" onclick="openTeacherProfileModal('${escJs(t.id)}')">${esc(t.code||'-')}</span></td>
-      <td>${esc(t.name)}</td><td><span class="tag info">${esc(t.role||'مدرس')}</span></td><td>${esc(t.phone||'-')}</td><td>${esc(t.subjects||'-')}</td><td class="num">${payLabel}</td>
+      <td>${esc(t.name)}</td><td><span class="tag info">${esc(t.role||'مدرس')}</span>${t.branch?`<div style="font-size:11px; color:var(--text-dim); margin-top:3px;">${esc(t.branch)}</div>`:''}</td><td>${esc(t.phone||'-')}</td><td>${esc(t.subjects||'-')}</td><td class="num">${payLabel}</td>
       <td class="num">${faDigits(classes.length)}</td><td>${esc(names)}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openTeacherModal('${escJs(t.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
@@ -2707,7 +2765,7 @@ function renderDonations(){
   const { pageItems, totalPages } = paginateList('donations', db.donations);
   document.getElementById('donations-table').innerHTML = pageItems.map(d=>`
     <tr>
-      <td>${esc(d.donorName)}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${esc(d.method)}</td><td>${esc(d.note||'-')}</td>
+      <td>${esc(d.donorName)}</td><td class="num">${afn(donationNetAmount(d))}</td><td>${toJalali(d.date)}</td><td>${esc(d.method)}</td><td>${esc(d.branch||'عمومی')}</td><td>${esc(d.note||'-')}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openDonationModal('${escJs(d.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteDonation('${escJs(d.id)}')" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14"/></svg></button>
@@ -2722,7 +2780,7 @@ let expenseBranchFilter = 'all';
 function renderExpensesFilterChips(){
   document.getElementById('expenses-filters').innerHTML =
     `<button class="chip ${expenseBranchFilter==='all'?'active':''}" data-branch="all">همهٔ شعبه‌ها</button>` +
-    BRANCHES.map(b=>`<button class="chip ${expenseBranchFilter===b?'active':''}" data-branch="${esc(b)}">${esc(b)}</button>`).join('');
+    visibleBranches().map(b=>`<button class="chip ${expenseBranchFilter===b?'active':''}" data-branch="${esc(b)}">${esc(b)}</button>`).join('');
 }
 document.getElementById('expenses-filters').addEventListener('click', e=>{
   const chip = e.target.closest('.chip'); if(!chip) return;
@@ -2797,7 +2855,7 @@ function openBookPurchaseModal(id){
       <div class="field"><label>منبع (کتاب‌فروشی/مطبعه)</label><input id="f-bp-source" list="dl-book-sources" value="${esc(b?b.source||'':'')}" placeholder="مثلاً: مطبعهٔ آریانا">
         <datalist id="dl-book-sources">${Array.from(new Set(db.bookPurchases.map(x=>x.source).filter(Boolean))).map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
       </div>
-      <div class="field"><label>شعبه</label><select id="f-bp-branch">${categoryOptionsHtml(BRANCHES, b?b.branch:BRANCHES[0])}</select></div>
+      <div class="field"><label>شعبه</label><select id="f-bp-branch">${branchOptionsHtml(b?b.branch:'')}</select></div>
     </div>
     <div class="field-row">
       <div class="field"><label>تعداد</label><input id="f-bp-qty" type="number" min="0" value="${esc(b?b.quantity||'':'')}" oninput="updateBookPurchaseCalc()"></div>
@@ -3432,7 +3490,7 @@ function renderReport(){
     : `<tr><td colspan="2" class="empty">هزینهی در این بازه ثبت نشده.</td></tr>`;
   document.getElementById('report-expense-breakdown').innerHTML = rows;
 
-  const branchStats = BRANCHES.map(b=>{
+  const branchStats = visibleBranches().map(b=>{
     const branchClasses = db.classes.filter(c=>c.branch===b);
     const activeBranchClasses = branchClasses.filter(c=>classStatus(c)==='در حال برگزاری').length;
     const branchStudents = db.students.filter(s=>classBranch(s.classId)===b && inRange(s.registerDate));
@@ -3585,6 +3643,7 @@ function populateGateSelects(){
       migrationGeneratedPasswords.map(p=>`${esc(p.name)} (${esc(p.role)}, ${esc(p.code)}): <b class="code-badge" style="cursor:default;">${esc(p.password)}</b>`).join('<br>');
   }
   if(currentRole && (currentRole!=='teacher' || currentTeacherId) && (currentRole!=='student' || currentStudentId) && currentActorName){
+    applyManagerScope();
     applyRoleVisibility();
     const hash = window.location.hash.replace(/^#\/?/, '');
     const defaultView = currentRole==='teacher' ? 'classes' : currentRole==='employee' ? 'students' : currentRole==='student' ? 'studentSelf' : 'dashboard';

@@ -7,7 +7,7 @@
   <link rel="icon" href="assets/logo.png">
   <meta name="theme-color" content="#0d0918">
   <link rel="preload" href="fonts/vazirmatn-arabic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/app.css?v=4.2">
+  <link rel="stylesheet" href="css/app.css?v=4.3">
   <script>
     (function() {
       try {
@@ -180,6 +180,7 @@
         </div>
       </div>
     </header>
+    <div id="branch-notice" class="branch-notice" role="status" style="display:none;"></div>
 
     <!-- ================= DASHBOARD ================= -->
     <section class="view active" id="view-dashboard">
@@ -408,7 +409,7 @@
       </div>
       <div class="panel">
         <div class="table-scroll"><table>
-          <thead><tr><th>منبع درآمد</th><th>مبلغ</th><th>تاریخ</th><th>روش</th><th>توضیحات</th><th></th></tr></thead>
+          <thead><tr><th>منبع درآمد</th><th>مبلغ</th><th>تاریخ</th><th>روش</th><th>شعبه</th><th>توضیحات</th><th></th></tr></thead>
           <tbody id="donations-table"></tbody>
         </table></div>
         <div class="empty" id="donations-empty" style="display:none;">هنوز درآمد ثبت نشده.</div>
@@ -924,13 +925,14 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="vendor/gsap.min.js?v=3.15.0"></script>
-  <script src="js/seed.js?v=2.0"></script>
+  <script src="js/seed.js?v=2.1"></script>
   <script src="js/charts.js?v=1.0"></script>
-  <script src="js/app.js?v=5.2"></script>
+  <script src="js/branch-scope.js?v=1.0"></script>
+  <script src="js/app.js?v=5.3"></script>
   <script src="js/discount-codes.js?v=1.1"></script>
   <script src="js/updates.js?v=2.3"></script>
-  <script src="js/updates2.js?v=1.9"></script>
-  <script src="js/sync.js?v=2.0"></script>
+  <script src="js/updates2.js?v=2.0"></script>
+  <script src="js/sync.js?v=2.1"></script>
   <script src="js/ui.js?v=1.0"></script>
 </body>
 </html>
