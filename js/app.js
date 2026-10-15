@@ -742,11 +742,13 @@ function openModal(html, opts){
   } catch(e) {}
 }
 function closeModal(){
+  closeClassPicker();
   overlay.classList.remove('active');
   modalBody.innerHTML='';
   modalBody.classList.remove('wide');
 }
 overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });
+document.getElementById('class-picker').addEventListener('click', e=>{ if(e.target.id==='class-picker') closeClassPicker(); });
 
 /* ---------------- Computed helpers ---------------- */
 const CLASS_CATEGORIES = ['جنرال انگلیسی (General English)','آیلتس (IELTS)','تافل (TOEFL)','مکالمه (Conversation)','کودکان و نوجوانان (Kids/Teens)','آماده‌سازی آزمون‌های زبان','سایر'];
@@ -1216,11 +1218,91 @@ function studentStatusTagClass(st){
 }
 
 /* ---------------- CLASS modal ---------------- */
-function classOptionsHtml(selectedId){
-  if(!db.classes.length) return '<option value="">ابتدا یک صنف بسازید</option>';
-  return '<option value="">انتخاب کنید</option>' + db.classes.map(c=>
-    `<option value="${esc(c.id)}" ${c.id===selectedId?'selected':''}>${esc(c.name||c.category)} · ${esc(c.branch||'-')}${esc(c.startTime?' · '+classTimeLabel(c):'')} · مدرس: ${esc(classTeacherIds(c).map(teacherName).join(' و ')||'-')} · آغاز: ${esc(c.startDate?toJalali(c.startDate):'-')} (${esc(classStatus(c))})</option>`
-  ).join('');
+/* ---------------- Class picker (student registration) ----------------
+   Instead of a long dropdown, the registration form opens a popup table of
+   the classes the user may register into (a branch manager only has their
+   own branch's classes). Finished classes are hidden unless asked for. */
+let classPickerQuery = '', classPickerShowEnded = false;
+function classTeacherNames(c){ return classTeacherIds(c).map(teacherName).join(' و ') || '-'; }
+function classEnrolledCount(c){ return db.students.filter(s=>s.classId===c.id).length; }
+function classPickerFieldHtml(selectedId){
+  return `<input type="hidden" id="f-st-class" value="${esc(selectedId||'')}">
+    <button type="button" class="class-pick-btn" id="f-st-class-btn" onclick="openClassPicker()">${classPickSummaryHtml(selectedId)}</button>`;
+}
+function classPickSummaryHtml(id){
+  const c = db.classes.find(x=>x.id===id);
+  if(!c) return `<span class="class-pick-main"><span class="class-pick-empty">${db.classes.length?'صنفی انتخاب نشده است':'ابتدا یک صنف بسازید'}</span></span><span class="class-pick-cta">انتخاب صنف</span>`;
+  const branch = visibleBranches().length>1 ? ` · ${esc(c.branch||'-')}` : '';
+  return `<span class="class-pick-main"><b>${esc(c.name||c.category)}</b><small>${esc(classTimeLabel(c))} · ${esc(classTeacherNames(c))} · آغاز: ${esc(c.startDate?toJalali(c.startDate):'-')}${branch}</small></span><span class="class-pick-cta">تغییر صنف</span>`;
+}
+function openClassPicker(){
+  classPickerQuery = ''; classPickerShowEnded = false;
+  const sel = document.getElementById('f-st-class').value;
+  const multi = visibleBranches().length>1;
+  const ended = db.classes.filter(c=>classStatus(c)==='پایان‌یافته').length;
+  document.getElementById('class-picker-body').innerHTML = `
+    <h3>انتخاب صنف</h3>
+    <p class="sub">${multi ? 'صنف‌های همهٔ شعبه‌ها' : `صنف‌های ${esc(myBranch()||'شعبهٔ شما')}`} · روی صنف مورد نظر کلیک کنید</p>
+    <div class="class-picker-tools">
+      <input id="class-picker-q" type="search" placeholder="جستجو: نام صنف، مدرس${multi?'، شعبه':''}…" oninput="classPickerQuery=this.value; renderClassPickerRows()">
+      ${ended ? `<label class="class-picker-ended"><input type="checkbox" onchange="classPickerShowEnded=this.checked; renderClassPickerRows()"> نمایش صنف‌های پایان‌یافته (${faDigits(ended)})</label>` : ''}
+    </div>
+    <div class="table-scroll class-picker-table">
+      <table>
+        <thead><tr><th>نام صنف</th>${multi?'<th>شعبه</th>':''}<th>ساعت صنف</th><th>مدرس</th><th>تاریخ آغاز</th><th class="num">ثبت‌نام / ظرفیت</th></tr></thead>
+        <tbody id="class-picker-rows"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="class-picker-empty" style="display:none;">صنفی یافت نشد.</div>
+    <div class="modal-actions">
+      ${sel ? `<button class="btn ghost" onclick="pickClass('')">بدون صنف</button>` : ''}
+      <button class="btn ghost" onclick="closeClassPicker()">بستن</button>
+    </div>`;
+  document.getElementById('class-picker').classList.add('active');
+  renderClassPickerRows();
+  const q = document.getElementById('class-picker-q'); if(q) q.focus();
+}
+function renderClassPickerRows(){
+  const tbody = document.getElementById('class-picker-rows'); if(!tbody) return;
+  const sel = document.getElementById('f-st-class').value;
+  const multi = visibleBranches().length>1;
+  const q = classPickerQuery.trim().toLowerCase();
+  const rank = { 'در حال برگزاری':0, 'آینده':1, 'پایان‌یافته':2 };
+  const list = db.classes
+    .filter(c=> classPickerShowEnded || classStatus(c)!=='پایان‌یافته' || c.id===sel)
+    .filter(c=> !q || [c.name, c.category, c.branch, classTeacherNames(c)].join(' ').toLowerCase().includes(q))
+    .sort((a,b)=> rank[classStatus(a)]-rank[classStatus(b)] || String(a.startDate||'').localeCompare(String(b.startDate||'')));
+  tbody.innerHTML = list.map(c=>{
+    const st = classStatus(c), n = classEnrolledCount(c), full = c.capacity && n>=c.capacity;
+    return `<tr class="class-pick-row${c.id===sel?' selected':''}" tabindex="0" role="button" data-id="${esc(c.id)}"
+        onclick="pickClass('${escJs(c.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickClass('${escJs(c.id)}');}">
+      <td><b>${esc(c.name||c.category)}</b>${c.name?`<div class="class-pick-sub">${esc(c.category)}</div>`:''}${st!=='در حال برگزاری'?` <span class="tag ${classStatusTagClass(st)}">${esc(st)}</span>`:''}</td>
+      ${multi?`<td>${esc(c.branch||'-')}</td>`:''}
+      <td>${esc(classTimeLabel(c))}</td>
+      <td>${esc(classTeacherNames(c))}</td>
+      <td>${esc(c.startDate?toJalali(c.startDate):'-')}</td>
+      <td class="num">${faDigits(n)}${c.capacity?` / ${faDigits(c.capacity)}`:''}${full?' <span class="tag cost">تکمیل</span>':''}</td>
+    </tr>`;
+  }).join('');
+  const empty = document.getElementById('class-picker-empty');
+  empty.style.display = list.length ? 'none' : 'block';
+  empty.textContent = q ? 'صنفی با این مشخصات یافت نشد.'
+    : !db.classes.length ? 'هنوز صنفی تعریف نشده است.'
+    : 'صنف در حال برگزاری یا آینده‌ای نیست؛ برای دیدن صنف‌های پایان‌یافته، گزینهٔ بالا را تیک بزنید.';
+}
+function pickClass(id){
+  const input = document.getElementById('f-st-class');
+  if(input){ input.value = id; input.dispatchEvent(new Event('change', { bubbles:true })); }
+  const btn = document.getElementById('f-st-class-btn');
+  if(btn) btn.innerHTML = classPickSummaryHtml(id);
+  closeClassPicker();
+  if(btn) btn.focus();
+}
+function closeClassPicker(){
+  const ov = document.getElementById('class-picker');
+  if(!ov || !ov.classList.contains('active')) return;
+  ov.classList.remove('active');
+  document.getElementById('class-picker-body').innerHTML = '';
 }
 function teacherOptionsHtml(selectedId){
   return '<option value="">بدون مدرس مشخص</option>' + db.teachers.map(t=>
@@ -1559,7 +1641,7 @@ function openStudentModal(id){
     `}
 
     <div class="sectiontitle">صنف و ثبت‌نام</div>
-    <div class="field"><label>صنف</label><select id="f-st-class">${classOptionsHtml(s?s.classId:'')}</select></div>
+    <div class="field"><label>صنف</label>${classPickerFieldHtml(s?s.classId:'')}</div>
     <div class="field"><label>تاریخ ثبت‌نام</label>${jalaliPicker('f-st-date', s?s.registerDate:null)}</div>
 
     <div class="sectiontitle">شهریه</div>
@@ -3658,6 +3740,8 @@ function populateGateSelects(){
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  const picker = document.getElementById('class-picker');
+  if (picker && picker.classList.contains('active')) { closeClassPicker(); return; }
   const overlay = document.getElementById('overlay');
   if (overlay && overlay.classList.contains('active')) closeModal();
 });
