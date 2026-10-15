@@ -7,7 +7,7 @@
   <link rel="icon" href="assets/logo.png">
   <meta name="theme-color" content="#0d0918">
   <link rel="preload" href="fonts/vazirmatn-arabic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/app.css?v=4.4">
+  <link rel="stylesheet" href="css/app.css?v=4.5">
   <script>
     (function() {
       try {
@@ -308,7 +308,7 @@
           <button type="button" class="chip" data-filter="unpaid">پرداخت‌نشده</button>
           <button type="button" class="chip" data-filter="free">رایگان</button>
         </div>
-        <input id="students-search" type="text" placeholder="جست‌وجو بر اساس نام شاگرد، سرپرست یا صنف..." style="margin-bottom:14px;" oninput="paginationState['students']=1; renderStudents();">
+        <input id="students-search" type="text" placeholder="جست‌وجو بر اساس نام شاگرد، سرپرست یا صنف..." style="margin-bottom:14px;" oninput="debounced('students-search', ()=>{ paginationState['students']=1; renderStudents(); })">
         <div class="table-scroll">
         <table>
           <thead><tr>
@@ -451,6 +451,7 @@
           <tfoot id="book-purchases-foot"></tfoot>
         </table></div>
         <div class="empty" id="book-purchases-empty" style="display:none;">هنوز خریدی ثبت نشده.</div>
+        <div class="pagination" id="book-purchases-pagination"></div>
       </div>
 
       <div class="panel">
@@ -487,6 +488,7 @@
           <tfoot id="expenses-foot"></tfoot>
         </table></div>
         <div class="empty" id="expenses-empty" style="display:none;">هنوز هزینه‌ای ثبت نشده.</div>
+        <div class="pagination" id="expenses-pagination"></div>
       </div>
     </section>
 
@@ -683,7 +685,7 @@
             <select id="dc-filter-school" onchange="onDiscountFilterChange()"><option value="all">همه</option></select>
           </div>
           <div class="field"><label>جستجوی کد / شاگرد</label>
-            <input id="dc-search" placeholder="کد یا نام شاگرد را تایپ کنید" oninput="onDiscountFilterChange()" autocomplete="off">
+            <input id="dc-search" placeholder="کد یا نام شاگرد را تایپ کنید" oninput="debounced('dc-search', onDiscountFilterChange)" autocomplete="off">
           </div>
         </div>
         <div class="table-scroll">
@@ -931,11 +933,11 @@
   <script src="js/seed.js?v=2.1"></script>
   <script src="js/charts.js?v=1.0"></script>
   <script src="js/branch-scope.js?v=1.1"></script>
-  <script src="js/app.js?v=5.4"></script>
+  <script src="js/app.js?v=5.5"></script>
   <script src="js/discount-codes.js?v=1.1"></script>
   <script src="js/updates.js?v=2.3"></script>
-  <script src="js/updates2.js?v=2.2"></script>
+  <script src="js/updates2.js?v=2.3"></script>
   <script src="js/sync.js?v=2.1"></script>
-  <script src="js/ui.js?v=1.0"></script>
+  <script src="js/ui.js?v=1.1"></script>
 </body>
 </html>

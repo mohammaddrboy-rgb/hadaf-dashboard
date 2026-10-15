@@ -135,6 +135,41 @@
     switchView(b.getAttribute('data-view'));
   });
 
+  /* ---------------- Responsive tables ----------------
+     Each cell gets its column name (data-label), so on phones tables with 5+
+     columns can show every row as a card (css: table.rt). The edit/delete
+     cell is marked so it stays in view on wide tables. Tables marked
+     .keep-table (the attendance grid) always stay tables. */
+  var tablesQueued = false;
+  function labelTables() {
+    tablesQueued = false;
+    $$('.table-scroll > table').forEach(function (t) {
+      var heads = $$(':scope > thead th', t).map(function (th) { return th.textContent.trim(); });
+      var cards = !t.classList.contains('keep-table') && heads.length >= 5;
+      t.classList.toggle('rt', cards);
+      $$(':scope > tbody > tr, :scope > tfoot > tr', t).forEach(function (tr) {
+        if (tr.getAttribute('data-rt') === String(heads.length)) return;
+        tr.setAttribute('data-rt', String(heads.length));
+        var col = 0;
+        Array.prototype.forEach.call(tr.cells, function (td) {
+          var span = td.colSpan || 1;
+          td.setAttribute('data-label', span > 1 ? '' : (heads[col] || ''));
+          col += span;
+          if (td.querySelector(':scope > .row-actions')) td.classList.add('rt-actions');
+        });
+      });
+      var lastTh = $(':scope > thead tr > th:last-child', t);
+      if (lastTh && !lastTh.textContent.trim() && $(':scope > tbody td.rt-actions', t)) lastTh.classList.add('rt-actions');
+    });
+  }
+  window.hadafLabelTables = labelTables;
+  new MutationObserver(function () {
+    if (tablesQueued) return;
+    tablesQueued = true;
+    (window.requestAnimationFrame || setTimeout)(labelTables);
+  }).observe(document.body, { childList: true, subtree: true });
+  labelTables();
+
   /* ---------------- Wrap app functions ---------------- */
   var _switchView = window.switchView;
   window.switchView = function (name, updateHash) {

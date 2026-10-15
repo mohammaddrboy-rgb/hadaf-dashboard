@@ -1142,3 +1142,95 @@ html.has-motion .modal { animation: none; }
 .class-pick-row.selected td { background: color-mix(in srgb, var(--brand) 12%, transparent); }
 .class-pick-row.selected td:first-child { box-shadow: inset -3px 0 0 var(--brand); }
 .class-pick-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+
+/* ==========================================================================
+   Responsiveness (October 2026)
+   ========================================================================== */
+/* Wide tables: the edit/delete column stays in view while scrolling sideways. */
+.table-scroll th.rt-actions, .table-scroll td.rt-actions {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--panel);
+  box-shadow: 8px 0 12px -10px rgba(0, 0, 0, 0.25);
+}
+.table-scroll th.rt-actions { z-index: 2; background: var(--panel-2); }
+.table-scroll tbody tr:hover td.rt-actions { background: color-mix(in srgb, var(--brand) 5%, var(--panel)); }
+
+/* Large screens: a little more breathing room, more columns for dashboard cards. */
+@media (min-width: 1600px) {
+  :root { --content-max: 1640px; }
+  tbody td { padding: 12px 16px; }
+}
+
+/* Touch screens: comfortable tap targets, and no zoom-in when typing on iPhone. */
+@media (pointer: coarse) {
+  .btn { min-height: 42px; }
+  .btn.small { height: auto; min-height: 38px; padding-block: 6px; }
+  .icon-btn { min-width: 40px; min-height: 40px; }
+  .chip { height: 38px; }
+  .mobile-menu-btn { width: 42px; height: 42px; }
+  .pagination button, .pagination .btn { min-height: 40px; min-width: 40px; }
+  input[type="checkbox"], input[type="radio"] { min-width: 20px; min-height: 20px; }
+  .export-bar select { height: 40px; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), select { min-height: 40px; }
+}
+@media (pointer: coarse) and (max-width: 900px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea { font-size: 16px; }
+}
+
+/* Tablets and phones */
+@media (max-width: 900px) {
+  /* filter chips: one swipeable row instead of several wrapped rows */
+  .filterbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; margin-inline: -4px; padding-inline: 4px; }
+  .filterbar::-webkit-scrollbar { display: none; }
+  .filterbar .chip { flex: none; }
+  label[for="expenses-tf"] { white-space: nowrap; }
+  /* page toolbar: actions share the row, the main button is easy to reach */
+  .topbar > div { width: 100%; justify-content: flex-start; }
+  .topbar .btn:not(.ghost) { margin-inline-start: auto; }
+}
+@media (max-width: 600px) {
+  .topbar .btn:not(.ghost) { flex: 1 1 100%; order: -1; }
+  .topbar .export-bar { flex: 1 1 auto; }
+  .topbar .export-bar select { flex: 1; }
+}
+
+/* Phones: tables with 5+ columns become one card per row. */
+@media (max-width: 640px) {
+  .table-scroll:has(> table.rt) { border: 0; background: transparent; overflow: visible; border-radius: 0; }
+  table.rt, table.rt > tbody, table.rt > tfoot, table.rt > tbody > tr, table.rt > tfoot > tr, table.rt > tbody > tr > td, table.rt > tfoot > tr > td { display: block; width: 100%; }
+  table.rt > thead { display: none; }
+  table.rt > tbody > tr, table.rt > tfoot > tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px;
+    margin: 0 0 10px; padding: 6px 14px;
+    background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius);
+    box-shadow: var(--elev-1, none);
+  }
+  table.rt > tbody > tr > td, table.rt > tfoot > tr > td {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0;
+    padding: 8px 0; border-bottom: 1px dashed var(--border-soft);
+    white-space: normal; overflow-wrap: anywhere; text-align: start;
+    position: static; box-shadow: none; background: transparent !important;
+  }
+  table.rt > tbody > tr > td::before, table.rt > tfoot > tr > td::before {
+    content: attr(data-label);
+    color: var(--text-faint); font-size: 11px; font-weight: 600;
+  }
+  table.rt td[data-label=""]::before { content: none; }
+  /* the first cell is the card's title; actions and full-width cells span both columns */
+  table.rt > tbody > tr > td:first-child { grid-column: 1 / -1; font-weight: 700; font-size: 14px; }
+  table.rt > tbody > tr > td:first-child::before { font-weight: 600; font-size: 11px; }
+  .class-picker-table { max-height: none; }
+  table.rt td[data-label=""], table.rt td.rt-actions { grid-column: 1 / -1; }
+  table.rt td:empty { display: none; }
+  .table-scroll table.rt td.rt-actions { position: static; box-shadow: none; flex-direction: row; justify-content: flex-end; border-bottom: 0; padding-top: 10px; }
+  table.rt td.rt-actions .row-actions { gap: 10px; }
+  table.rt td.num { text-align: start; }
+  table.rt > tbody > tr:hover > td { background: transparent; }
+  table.rt > tfoot > tr { background: var(--panel-2); }
+  /* rows that open something on tap (class picker) */
+  table.rt > tbody > tr.class-pick-row.selected { border-color: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 25%, transparent); }
+  table.rt > tbody > tr.class-pick-row.selected > td:first-child { box-shadow: none; }
+  /* modals use nearly the whole screen */
+  .overlay { padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); }
+  .modal, .modal.wide { width: 100%; }
+}
