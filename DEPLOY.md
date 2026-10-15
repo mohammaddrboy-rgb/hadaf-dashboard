@@ -1,3 +1,19 @@
+# Latest update: class picker in student registration (October 2026)
+
+In «ثبت‌نام جدید», the class dropdown is replaced by a button that opens a
+popup table of the classes (a branch manager sees only their branch). The
+table shows class name, class time, teacher(s), start date and seats;
+it can be searched, and finished classes are shown on request.
+
+To deploy: merge the pull request into `main`, back up the data (as in the
+steps below), then copy `index.html`, `css/` and `js/` into the web root.
+**`server/server.js` and `js/branch-scope.js` did not change, so the sync
+server does not need a restart**, and nginx needs no change. Check:
+`curl -s https://SITE/ | grep -o 'js/app.js?v=[0-9.]*'` prints
+`js/app.js?v=5.4`; then staff reload open tabs.
+
+---
+
 # Latest update: branch managers swapped (October 2026)
 
 The branch managers are now:
