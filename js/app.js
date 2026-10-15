@@ -698,7 +698,8 @@ function switchView(name, updateHash = true){
     }
   }
 
-  if(name==='classes') renderClasses();
+  if(staleViews.has(name)) renderView(name);
+  else if(name==='classes') renderClasses();
   if(name==='attendance') renderAttendanceClassOptions();
   if(name==='discountCodes' && typeof renderDiscountCodes==='function') renderDiscountCodes();
   if(name==='myIncome' && typeof renderMyIncome==='function') renderMyIncome();
@@ -1135,7 +1136,34 @@ function classTimeProgress(c){
   if(now >= end) return 100;
   return Math.max(0, Math.min(100, Math.round((now - start) / (end - start) * 100)));
 }
-function teacherName(id){ const t = db.teachers.find(x=>x.id===id); return t?t.name:'-'; }
+/* Fast id lookups for big lists (thousands of students): an id -> position
+   index per collection. It is rebuilt when the list is replaced or its
+   length changes, every hit is checked against the list, and renderAll()
+   starts from fresh indexes. */
+let recordIndexes = {};
+function recordById(key, id){
+  const arr = db[key] || [];
+  for(let attempt=0; attempt<2; attempt++){
+    let ix = recordIndexes[key], fresh = false;
+    if(!ix || ix.arr!==arr || ix.len!==arr.length){
+      ix = recordIndexes[key] = { arr, len:arr.length, pos:new Map() };
+      arr.forEach((r,i)=>{ if(r && !ix.pos.has(r.id)) ix.pos.set(r.id, i); });
+      fresh = true;
+    }
+    const i = ix.pos.get(id);
+    if(i!==undefined && arr[i] && arr[i].id===id) return arr[i];
+    if(fresh || i===undefined) return undefined;
+    delete recordIndexes[key];   // moved or replaced since the index was built
+  }
+  return undefined;
+}
+function teacherName(id){ const t = recordById('teachers', id); return t?t.name:'-'; }
+/* Runs fn once typing pauses (search boxes), so each key press stays instant. */
+const debounceTimers = {};
+function debounced(key, fn, ms){
+  clearTimeout(debounceTimers[key]);
+  debounceTimers[key] = setTimeout(fn, ms===undefined ? 150 : ms);
+}
 /* ---------------- Two-teacher (shared) classes ----------------
    A class can be taught by two teachers, each teaching some skills (e.g.
    Reading & Writing / Listening & Speaking) on alternate days, three days a
@@ -1173,11 +1201,11 @@ function classSessionHours(c){
   return mins>0 ? mins/60 : 0;
 }
 function teacherClassesList(id){ return db.classes.filter(c=>classHasTeacher(c, id)); }
-function className(id){ const c = db.classes.find(x=>x.id===id); return c?(c.name||c.category):'-'; }
-function classBranch(id){ const c = db.classes.find(x=>x.id===id); return c?(c.branch||'-'):'-'; }
+function className(id){ const c = recordById('classes', id); return c?(c.name||c.category):'-'; }
+function classBranch(id){ const c = recordById('classes', id); return c?(c.branch||'-'):'-'; }
 
 /* ---------------- Student profile helpers ---------------- */
-function profileById(id){ return db.studentProfiles.find(x=>x.id===id); }
+function profileById(id){ return recordById('studentProfiles', id); }
 function profileName(id){ const p = profileById(id); return p ? p.name : 'بدون‌نام'; }
 function profileCode(id){ const p = profileById(id); return p ? p.code : '-'; }
 function profileGrade(id){ const p = profileById(id); return p ? (p.grade||'') : ''; }
@@ -2867,6 +2895,7 @@ function renderExpensesFilterChips(){
 document.getElementById('expenses-filters').addEventListener('click', e=>{
   const chip = e.target.closest('.chip'); if(!chip) return;
   expenseBranchFilter = chip.dataset.branch;
+  paginationState['expenses'] = 1;
   renderExpensesFilterChips();
   renderExpenses();
 });
@@ -2874,13 +2903,15 @@ let expenseTimeFilter = 'all';
 function onExpenseTimeFilterChange(){
   const sel = document.getElementById('expenses-tf');
   expenseTimeFilter = sel ? sel.value : 'all';
+  paginationState['expenses'] = 1;
   renderExpenses();
 }
 function renderExpenses(){
   let list = expenseBranchFilter==='all' ? db.expenses : db.expenses.filter(e=>e.branch===expenseBranchFilter);
   list = filterByDate(list, 'date', expenseTimeFilter);
   document.getElementById('expenses-empty').style.display = list.length? 'none':'block';
-  document.getElementById('expenses-table').innerHTML = list.map(e=>`
+  const { pageItems, totalPages } = paginateList('expenses', list);
+  document.getElementById('expenses-table').innerHTML = pageItems.map(e=>`
     <tr>
       <td>${esc(e.branch||'-')}</td><td><span class="tag cost">${esc(e.category)}</span></td><td class="num">${afn(e.amount)}</td><td>${toJalali(e.date)}</td><td>${esc(e.note||'-')}</td>
       <td><div class="row-actions">
@@ -2895,6 +2926,7 @@ function renderExpenses(){
   if(footEl) footEl.innerHTML = list.length
     ? `<tr class="totals-row"><td colspan="2"><b>${esc(label)}</b></td><td class="num"><b>${afn(total)}</b></td><td colspan="3"></td></tr>`
     : '';
+  renderPaginationControls('expenses-pagination', 'expenses', totalPages, 'renderExpenses');
 }
 
 /* ---------------- Render: Report ---------------- */
@@ -3021,7 +3053,9 @@ function openBookSourceHistoryModal(source){
 }
 function renderBooks(){
   document.getElementById('book-purchases-empty').style.display = db.bookPurchases.length? 'none':'block';
-  document.getElementById('book-purchases-table').innerHTML = db.bookPurchases.map(b=>{
+  const { pageItems: purchasesPage, totalPages: purchasePages } = paginateList('bookPurchases', db.bookPurchases);
+  renderPaginationControls('book-purchases-pagination', 'bookPurchases', purchasePages, 'renderBooks');
+  document.getElementById('book-purchases-table').innerHTML = purchasesPage.map(b=>{
     const remaining = (b.totalCost||0)-(b.paidAmount||0);
     return `<tr>
       <td>${esc(b.title)}</td><td>${b.source?`<span class="code-badge" onclick="openBookSourceHistoryModal('${escJs(b.source.replace(/'/g,"\\'"))}')">${esc(b.source)}</span>`:'-'}</td><td>${esc(b.branch||'-')}</td><td class="num">${faDigits(b.quantity||0)}</td>
@@ -3433,7 +3467,7 @@ function renderAttendanceGrid(){
   wrap.innerHTML = `
     <p class="hint" style="margin:10px 0;">${hint}</p>
     ${sharedLegend}
-    <div class="table-scroll"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="table-scroll"><table class="keep-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="pagination" id="att-grid-pagination"></div>
   `;
   renderPaginationControls('att-grid-pagination', attKey, totalPages, 'renderAttendanceGrid');
@@ -3663,18 +3697,31 @@ function renderSeasonComparison(){
 }
 
 /* ---------------- Render all ---------------- */
-function renderAll(){
-  renderDashboard(); renderClasses(); renderSeminars(); renderStudents(); renderTeachers(); renderDonations(); renderExpenses();
-  renderProjects(); renderMeetings(); renderTeacherAdvances(); renderReport(); renderMonthlyTrend();
-  renderBooks(); renderShareholders(); renderSettingsPins(); renderActivityLog();
-  if(typeof renderDiscountCodes==='function') renderDiscountCodes();
-  if(typeof renderMyIncome==='function') renderMyIncome();
-  if(typeof renderAssets==='function') renderAssets();
-  if(typeof renderTaxReport==='function') renderTaxReport();
-  if(typeof renderTeacherDiscipline==='function') renderTeacherDiscipline();
-  if(typeof renderStudentSelf==='function') renderStudentSelf();
-  if(typeof renderPrintSettings==='function') renderPrintSettings();
+/* Which functions draw each page. After a change only the page on screen is
+   redrawn; the others are marked stale and redrawn when opened (switchView),
+   so saving stays quick with thousands of records. */
+const VIEW_RENDERERS = {
+  dashboard:['renderDashboard'], classes:['renderClasses'], seminars:['renderSeminars'], students:['renderStudents'],
+  teachers:['renderTeachers','renderTeacherAdvances'], donations:['renderDonations'], expenses:['renderExpenses'],
+  projects:['renderProjects'], meetings:['renderMeetings'], report:['renderReport','renderMonthlyTrend'],
+  books:['renderBooks'], shareholders:['renderShareholders'], activityLog:['renderActivityLog'],
+  settings:['renderSettingsPins','renderPrintSettings'], discountCodes:['renderDiscountCodes'], myIncome:['renderMyIncome'],
+  assets:['renderAssets'], taxReport:['renderTaxReport'], teacherDiscipline:['renderTeacherDiscipline'],
+  studentSelf:['renderStudentSelf'], attendance:['renderAttendanceIfOpen'],
+};
+const staleViews = new Set();
+function renderAttendanceIfOpen(){
   if(document.getElementById('att-class-select') && document.getElementById('att-class-select').value) renderAttendanceGrid();
+}
+function activeViewName(){ const v = document.querySelector('.view.active'); return v ? v.id.replace(/^view-/, '') : ''; }
+function renderView(name){
+  staleViews.delete(name);
+  (VIEW_RENDERERS[name]||[]).forEach(fn=>{ if(typeof window[fn]==='function') window[fn](); });
+}
+function renderAll(){
+  recordIndexes = {};
+  const active = activeViewName();
+  Object.keys(VIEW_RENDERERS).forEach(v=>{ if(v===active) renderView(v); else staleViews.add(v); });
 }
 renderReportFilterChips();
 renderExpensesTimeOptions();

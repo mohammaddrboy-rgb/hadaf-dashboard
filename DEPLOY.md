@@ -1,3 +1,26 @@
+# Latest update: faster and more responsive on PC and mobile (October 2026)
+
+- **Speed:** saving redraws only the page on screen (other pages refresh
+  when opened); student/class/teacher lookups are indexed; search boxes
+  wait for a pause in typing; daily expenses and book purchases are paged.
+  With 3,000 students a save went from ~450 ms to ~50 ms, opening
+  «هزینه‌های روزانه» from 1.3 s to 15 ms.
+- **Phones:** tables with many columns show each row as a card with
+  labelled fields; filter chips scroll in one row; the main button of each
+  page is full width; buttons and inputs are touch-sized; inputs no longer
+  make iPhones zoom in. The attendance grid stays a grid.
+- **PC:** on wide tables the edit/delete buttons stay pinned in view while
+  scrolling sideways; very wide screens use more of the width.
+
+To deploy: merge the pull request into `main`, back up the data, then copy
+`index.html`, `css/` and `js/` into the web root. **`server/server.js` and
+`js/branch-scope.js` did not change, so the sync server does not need a
+restart**, and nginx needs no change. Check:
+`curl -s https://SITE/ | grep -o 'js/app.js?v=[0-9.]*'` prints
+`js/app.js?v=5.5`; then staff reload open tabs.
+
+---
+
 # Latest update: class picker in student registration (October 2026)
 
 In «ثبت‌نام جدید», the class dropdown is replaced by a button that opens a
