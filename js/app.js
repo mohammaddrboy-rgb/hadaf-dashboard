@@ -238,7 +238,11 @@ function migrateLegacyData(){
   if(changed) persistLocal();
 }
 let migrationGeneratedPasswords = [];
-migrateLegacyData();
+// Migrating the local browser cache must never brick the app: the server holds
+// the authoritative data, so if a malformed cached record makes this throw we
+// log it and still boot (otherwise the whole app halts and nothing — including
+// logout — works).
+try { migrateLegacyData(); } catch(e){ console.error('hadaf: migrateLegacyData failed; continuing without it:', e); }
 let storageWarned = false;
 function save(){
   if(!persistLocal() && !storageWarned){
