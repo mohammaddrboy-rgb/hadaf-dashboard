@@ -20,6 +20,7 @@ hadaf-dashboard/
 ├── js/sync.js            # همگام‌سازی با سرور (ادغام سه‌طرفهٔ تغییرات)
 ├── js/branch-scope.js    # شعبه‌ها و دسترسی مدیر هر شعبه (در مرورگر و سرور)
 ├── server/server.js      # سرور داده و ورود (Node.js، بدون وابستگی)
+├── server/staff-admin.js # افزودن پرسنل یا تعیین رمز مستقیماً روی سرور
 └── assets/logo.png       # لوگو
 ```
 
