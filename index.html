@@ -7,7 +7,7 @@
   <link rel="icon" href="assets/logo.png">
   <meta name="theme-color" content="#0d0918">
   <link rel="preload" href="fonts/vazirmatn-arabic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/app.css?v=4.6">
+  <link rel="stylesheet" href="css/app.css?v=4.7">
   <script>
     (function() {
       try {
@@ -183,6 +183,10 @@
           <span><b id="role-badge">سهامدار</b></span>
           <span class="avatar" id="header-avatar" aria-hidden="true">ه</span>
         </div>
+        <button type="button" class="theme-toggle-btn header-logout-btn" onclick="logoutRole()" title="خروج از حساب" aria-label="خروج از حساب">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+          <span>خروج</span>
+        </button>
       </div>
     </header>
     <div id="branch-notice" class="branch-notice" role="status" style="display:none;"></div>

@@ -463,6 +463,10 @@ html.has-motion .view.active { animation: none; } /* GSAP handles it */
 .theme-toggle-btn:hover { color: var(--text); border-color: var(--brand-border); }
 .theme-toggle-btn svg { width: 17px; height: 17px; stroke-width: 2; transition: transform 500ms var(--ease-spring); }
 .theme-toggle-btn:hover svg { transform: rotate(40deg); }
+/* Always-visible logout in the header (icon + label), on desktop and mobile. */
+.header-logout-btn { color: #e5484d; }
+.header-logout-btn:hover { color: #e5484d; border-color: #e5484d; background: color-mix(in srgb, #e5484d 12%, var(--panel)); }
+.header-logout-btn:hover svg { transform: none; }
 .mobile-menu-btn { display: none; }
 
 /* ==========================================================================
@@ -1048,7 +1052,8 @@ html.has-motion .modal { animation: none; }
   .role-chip > span:not(.sync-dot):not(.avatar) { display: none; }
   .role-chip { padding: 0 6px; gap: 6px; }
   .sync-dot { font-size: 0; gap: 0; padding: 0 4px; }
-  .search-trigger { width: 40px; }
+  /* Hide the Ctrl+K quick-search on phones so the labelled logout button fits. */
+  .search-trigger { display: none; }
   .gate-container { grid-template-columns: minmax(0, 1fr); padding-top: 76px; }
   .gate-hero .gate-features { display: none; }
   .gate-hero h1 { font-size: 28px; margin: 12px 0 6px; }
