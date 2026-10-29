@@ -6,6 +6,10 @@
  * Branch managers: Aminullah Zafari — شعبه مرکزی, Sharif Wafa — شعبه قلعه نو,
  * Barat Ebrahimi — شعبه سرپل (KNOWN_MANAGERS below).
  *
+ * «آنلاین» (Online) is a unit like a branch: all online classes, their
+ * registrations, costs and teachers' pay belong to it. The online manager
+ * (role «مدیر آنلاین») works in that unit only, under the same rules.
+ *
  * A branch manager (personnel role «مدیریت») works in one branch, stored
  * on their personnel record as `branch`. They see only that branch's:
  *   classes (branch), enrollments and attendance of those classes, student
@@ -25,9 +29,12 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var BRANCHES = ['شعبه مرکزی', 'شعبه قلعه نو', 'شعبه سرپل'];
   var ONLINE = 'آنلاین';
+  var BRANCHES = ['شعبه مرکزی', 'شعبه قلعه نو', 'شعبه سرپل', ONLINE];
   var MANAGER_ROLE = 'مدیریت';
+  var ONLINE_MANAGER_ROLE = 'مدیر آنلاین';
+  // Roles that log in as a manager and see only their own unit.
+  function isManagerRole(role) { return role === MANAGER_ROLE || role === ONLINE_MANAGER_ROLE; }
   // Old branch names (Persian, Arabic-Indic or Latin digits) -> new names.
   var RENAMES = {
     'شعبه ۲': BRANCHES[1], 'شعبه ٢': BRANCHES[1], 'شعبه 2': BRANCHES[1],
@@ -90,6 +97,7 @@
 
   function managerBranch(data, actorId) {
     var t = arr(data && data.teachers).find(function (x) { return isObj(x) && x.id === actorId; });
+    if (t && t.role === ONLINE_MANAGER_ROLE) return ONLINE;
     return t && t.role === MANAGER_ROLE ? String(t.branch || '') : '';
   }
 
@@ -282,7 +290,8 @@
   }
 
   return {
-    BRANCHES: BRANCHES, ONLINE: ONLINE, MANAGER_ROLE: MANAGER_ROLE, SCOPED: SCOPED,
+    BRANCHES: BRANCHES, ONLINE: ONLINE, MANAGER_ROLE: MANAGER_ROLE, ONLINE_MANAGER_ROLE: ONLINE_MANAGER_ROLE,
+    isManagerRole: isManagerRole, SCOPED: SCOPED,
     migrate: migrate, managerBranch: managerBranch, knownManagerBranch: knownManagerBranch,
     scopeView: scopeView, mergeWrite: mergeWrite, fixDuplicateCodes: fixDuplicateCodes,
   };

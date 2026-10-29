@@ -1,3 +1,51 @@
+# Latest update: Online unit and Online Manager role (October 2026)
+
+- **«آنلاین» (Online)** is now a unit next to the three branches. It
+  appears in every branch list (classes, expenses, other income, book
+  purchases, reports), and online classes are always held online. Its
+  registrations, costs and teachers' pay are counted under it.
+- New personnel role **«مدیر آنلاین»** (Online Manager), code prefix
+  **OM** (e.g. OM1405080001). She logs in on the «مدیر» tab and, like a
+  branch manager, sees and changes only the Online unit: online classes and
+  their teachers, registrations and fees, online costs (new expense
+  categories «تبلیغات آنلاین (اسپانسر فیسبوک)» and «پلتفرم و ابزار آنلاین»),
+  online teachers' salaries, and the report (Excel export to send to
+  branch managers and shareholders). The server enforces this.
+- Personnel form: new «جنسیت» (gender) field.
+- New admin script `server/staff-admin.js` to add a person or set a
+  password directly in the server data (so passwords never go into git).
+
+## Steps
+
+1. Merge the pull request into `main`.
+2. Back up the data:
+   `sudo cp -a /var/www/hadaf-data /var/www/hadaf-data.backup-$(date +%Y%m%d-%H%M)`
+3. Pull `main`; copy `index.html`, `css/` and `js/` into the web root, and
+   update the `server/` folder the service runs from (new file
+   `server/staff-admin.js`).
+4. **Restart the sync server** (`server/server.js` and `js/branch-scope.js`
+   changed), e.g. `sudo systemctl restart hadaf-sync`.
+5. Create Zahra Alizada's account (the temporary password is given to you
+   separately, not in git). Run it as the user that owns the data folder:
+   ```bash
+   sudo -u <data-owner> HADAF_DATA_DIR=/var/www/hadaf-data \
+     node /var/www/hadaf/server/staff-admin.js add \
+       --name "Zahra Alizada" --role "مدیر آنلاین" --gender female \
+       --password '<TEMPORARY PASSWORD>'
+   ```
+   It prints her code (OM…). If it says she already exists, use
+   `set-password --code <her code> --password '<…>'` instead.
+6. Check:
+   - `curl -s https://SITE/ | grep -o 'js/app.js?v=[0-9.]*'` prints `js/app.js?v=5.7`;
+   - log in on the «مدیر» tab as Zahra Alizada with the temporary password:
+     the header says «مدیر آنلاین» and a blue line says she sees only online data;
+   - optional, read-only — classes held online that are still filed under a
+     branch (a shareholder can move each to «آنلاین» by editing the class):
+     `sudo node -e 'const d=require("/var/www/hadaf-data/db.json");(d.classes||[]).filter(c=>c.mode==="آنلاین"&&c.branch!=="آنلاین").forEach(c=>console.log(c.name||c.category,"—",c.branch))'`
+7. Staff reload every open dashboard tab.
+
+---
+
 # Latest update: student card 50 AFN, and amounts kept when editing (October 2026)
 
 - New registrations now fill «قیمت کارت شاگردی» with **50** AFN (was 150).

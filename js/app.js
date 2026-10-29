@@ -425,7 +425,7 @@ function generateStudentCode(regDateISO){
   return `${prefix}${String(seq).padStart(4,'0')}`;
 }
 function generatePersonnelCode(role, createdAtISO){
-  const letter = role==='مدیریت' ? 'M' : role==='کارمند' ? 'E' : 'T';
+  const letter = role==='مدیر آنلاین' ? 'OM' : role==='مدیریت' ? 'M' : role==='کارمند' ? 'E' : 'T';
   const [jy,jm] = g2jParts(createdAtISO || todayISO());
   const prefix = `${letter}${jy}${String(jm).padStart(2,'0')}`;
   const seq = nextSeqForPrefix(db.teachers, prefix, 'code');
@@ -497,6 +497,14 @@ function readImageAsDataURL(inputEl, onDone){
 
 /* ---------------- Access control (client-side gate · see settings note) ---------------- */
 const ROLE_LABELS = { shareholder:'سهامدار', manager:'مدیر شعبه', teacher:'مدرس', employee:'کارمند', student:'شاگرد' };
+/* Label for the person logged in: an online manager logs in as a manager. */
+function currentRoleLabel(){
+  if(currentRole==='manager' && typeof db!=='undefined' && db){
+    const me = (db.teachers||[]).find(t=>t.id===currentTeacherId);
+    if(me && me.role===HadafBranchScope.ONLINE_MANAGER_ROLE) return 'مدیر آنلاین';
+  }
+  return ROLE_LABELS[currentRole] || '';
+}
 let currentRole = sessionStorage.getItem('hadaf_role') || '';
 let currentTeacherId = sessionStorage.getItem('hadaf_teacher_id') || '';
 let currentStudentId = sessionStorage.getItem('hadaf_student_id') || '';
@@ -530,7 +538,8 @@ function renderBranchNotice(){
     const b = myBranch();
     el.style.display = '';
     el.className = 'branch-notice' + (b ? '' : ' warn');
-    el.textContent = b ? `شما مدیر ${b} هستید؛ فقط اطلاعات همین شعبه را می‌بینید.`
+    el.textContent = b===HadafBranchScope.ONLINE ? 'شما مدیر بخش آنلاین هستید؛ فقط صنف‌ها، شاگردان، هزینه‌ها و سایر اطلاعات آنلاین را می‌بینید.'
+      : b ? `شما مدیر ${b} هستید؛ فقط اطلاعات همین شعبه را می‌بینید.`
       : 'شعبهٔ شما هنوز تعیین نشده است؛ تا وقتی سهامدار در «پرسنل و مدرسان» شعبهٔ شما را تعیین نکند، اطلاعات هیچ شعبه‌ای نمایش داده نمی‌شود.';
   } else el.style.display = 'none';
   // Branch filter chips depend on who is logged in.
@@ -548,9 +557,9 @@ function applyRoleVisibility(){
     grp.style.display = visibleButtons ? '' : 'none';
   });
   const badge = document.getElementById('role-badge');
-  if(badge) badge.textContent = currentRole ? `${ROLE_LABELS[currentRole]} · ${currentActorName}` : 'وارد نشده';
+  if(badge) badge.textContent = currentRole ? `${currentRoleLabel()} · ${currentActorName}` : 'وارد نشده';
   const sideRole = document.getElementById('sidebar-role-text');
-  if(sideRole) sideRole.textContent = currentRole ? `${ROLE_LABELS[currentRole]} · ${currentActorName}` : 'ورود نشده';
+  if(sideRole) sideRole.textContent = currentRole ? `${currentRoleLabel()} · ${currentActorName}` : 'ورود نشده';
   renderBranchNotice();
 }
 function showAccessGate(){
@@ -759,7 +768,7 @@ document.getElementById('class-picker').addEventListener('click', e=>{ if(e.targ
 /* ---------------- Computed helpers ---------------- */
 const CLASS_CATEGORIES = ['جنرال انگلیسی (General English)','آیلتس (IELTS)','تافل (TOEFL)','مکالمه (Conversation)','کودکان و نوجوانان (Kids/Teens)','آماده‌سازی آزمون‌های زبان','سایر'];
 const DONATION_METHODS = ['نقدی','سایر'];
-const EXPENSE_CATEGORIES = ['حقوق و دستمزد مدرسان','اجارهٔ شعبه','قبض و خدمات (برق/آب/گاز/اینترنت)','لوازم آموزشی','تبلیغات و بازاریابی','پذیرایی','سایر'];
+const EXPENSE_CATEGORIES = ['حقوق و دستمزد مدرسان','اجارهٔ شعبه','قبض و خدمات (برق/آب/گاز/اینترنت)','لوازم آموزشی','تبلیغات و بازاریابی','تبلیغات آنلاین (اسپانسر فیسبوک)','پلتفرم و ابزار آنلاین (Zoom، اینترنت و…)','پذیرایی','سایر'];
 const PROJECT_CATEGORIES = ['کمپین تبلیغاتی','دورهٔ فشرده/کارگاه','آزمون آزمایشی (Mock Test)','مراسم فارغ‌التحصیلی','همکاری با نهاد دیگر','سایر'];
 const BRANCHES = HadafBranchScope.BRANCHES; // شعبه مرکزی، شعبه قلعه نو، شعبه سرپل (js/branch-scope.js)
 const FAMILY_DISCOUNT_PERCENT = 25;
@@ -827,7 +836,7 @@ function classFormCategory(){
   return name;
 }
 function seminarLocationOptionsHtml(selected){
-  return categoryOptionsHtml([...visibleBranches(),'آنلاین'], selected);
+  return categoryOptionsHtml([...new Set([...visibleBranches(),'آنلاین'])], selected);
 }
 /* Branch choices for a form: a branch manager only gets their own branch. */
 function branchOptionsHtml(selected){
@@ -928,7 +937,7 @@ function teachersToRows(list){
   return list.map(t=>{
     const classes = teacherClassesList(t.id);
     const pf = teacherPassFailStats(t.id);
-    return { 'کد': t.code||'', 'نام': t.name, 'نقش': t.role||'', 'شعبه': t.branch||'', 'شماره تماس': t.phone||'', 'مضامین': t.subjects||'',
+    return { 'کد': t.code||'', 'نام': t.name, 'نقش': t.role||'', 'جنسیت': PERSONNEL_GENDERS[t.gender]||'', 'شعبه': t.branch||'', 'شماره تماس': t.phone||'', 'مضامین': t.subjects||'',
       'آغاز قرارداد': t.contractStart?toJalali(t.contractStart):'', 'پایان قرارداد': t.contractEnd?toJalali(t.contractEnd):'نامشخص',
       'نوع پرداخت': payTypeLabel(t), 'مبلغ (افغانی)': t.payAmount||0,
       'ساعات توافق‌شده در روز': t.payType===PAY_HOURLY ? (t.dailyHours||0) : '', 'نرخ هر ساعت (افغانی)': t.payType===PAY_HOURLY ? teacherHourlyRate(t) : '',
@@ -1353,7 +1362,7 @@ function openClassModal(id){
     <p class="sub">نوع فعالیت، مدرس، تاریخ آغاز/پایان و ظرفیت صنف را وارد کنید</p>
 
     <div class="field-row">
-      <div class="field"><label>شعبه</label><select id="f-cls-branch">${branchOptionsHtml(c?c.branch:'')}</select></div>
+      <div class="field"><label>شعبه</label><select id="f-cls-branch" onchange="onClassBranchChange()">${branchOptionsHtml(c?c.branch:'')}</select></div>
       <div class="field"><label>نوع صنف</label>
         <div style="display:flex; gap:6px;">
           <select id="f-cls-category" style="flex:1;" onchange="updateClassCategoryField()">${classCategoryOptionsHtml(c?c.category:CLASS_CATEGORIES[0])}</select>
@@ -1424,6 +1433,7 @@ function openClassModal(id){
   updateClassSchedulePreview();
   updateClassCategoryField();
   updateSharedClassFields();
+  onClassBranchChange();
 }
 /* Shows/labels the second-teacher fields of the class form. */
 function updateSharedClassFields(){
@@ -1445,6 +1455,13 @@ function classFormSessionCount(){
   return n>0 ? Math.min(n, 400) : 0;
 }
 /* Live preview of the session dates in the class form. */
+/* Classes of the online unit are always held online. */
+function onClassBranchChange(){
+  const online = document.getElementById('f-cls-branch').value===HadafBranchScope.ONLINE;
+  const mode = document.getElementById('f-cls-mode');
+  if(online) mode.value = 'آنلاین';
+  mode.disabled = online;
+}
 function updateClassSchedulePreview(){
   const box = document.getElementById('f-cls-schedule'); if(!box) return;
   const n = classFormSessionCount();
@@ -1499,7 +1516,7 @@ function saveClass(id){
     teacher2Id: shared ? t2 : '',
     teacher2Skills: shared ? document.getElementById('f-cls-skills2').value.trim() : '',
     teacher1Days: shared ? document.getElementById('f-cls-days1').value : '',
-    mode: document.getElementById('f-cls-mode').value,
+    mode: document.getElementById('f-cls-branch').value===HadafBranchScope.ONLINE ? 'آنلاین' : document.getElementById('f-cls-mode').value,
     capacity: Number(document.getElementById('f-cls-capacity').value)||0,
     startTime: document.getElementById('f-cls-start-time').value,
     endTime: document.getElementById('f-cls-end-time').value,
@@ -1949,7 +1966,8 @@ function saveStudentProfile(id){
 }
 
 /* ---------------- TEACHER (Personnel) modal ---------------- */
-const PERSONNEL_ROLES = ['مدرس','مدیریت','کارمند'];
+const PERSONNEL_ROLES = ['مدرس','مدیریت','مدیر آنلاین','کارمند'];
+const PERSONNEL_GENDERS = { female:'زن', male:'مرد' };
 function personnelRoleOptionsHtml(selected){
   return PERSONNEL_ROLES.map(r=>`<option value="${esc(r)}" ${r===(selected||'مدرس')?'selected':''}>${esc(r)}</option>`).join('');
 }
@@ -1960,11 +1978,12 @@ function openTeacherModal(id){
     ${t?`<p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span></p>`:`<p class="sub">کد یکتا پس از ذخیره به‌صورت خودکار ساخته می‌شود</p>`}
     <div class="field-row">
       <div class="field"><label>نام</label><input id="f-t-name" value="${esc(t?t.name:'')}"></div>
-      <div class="field"><label>نقش</label><select id="f-t-role">${personnelRoleOptionsHtml(t?t.role:'مدرس')}</select></div>
+      <div class="field"><label>نقش</label><select id="f-t-role" onchange="updatePersonnelRoleFields()">${personnelRoleOptionsHtml(t?t.role:'مدرس')}</select></div>
     </div>
+    <div class="field"><label>جنسیت</label><select id="f-t-gender"><option value="">—</option>${Object.entries(PERSONNEL_GENDERS).map(([k,v])=>`<option value="${k}" ${t&&t.gender===k?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="field-row">
       <div class="field"><label>شماره تماس</label><input id="f-t-phone" value="${esc(t?t.phone||'':'')}"></div>
-      <div class="field"><label>شعبه (برای مدیر شعبه الزامی)</label>${personnelBranchFieldHtml(t)}</div>
+      <div class="field"><label>شعبه (برای مدیر شعبه الزامی؛ مدیر آنلاین: آنلاین)</label>${personnelBranchFieldHtml(t)}</div>
     </div>
     <div class="field"><label>مضامین/تخصص (برای مدرسان)</label><input id="f-t-subjects" value="${esc(t?t.subjects||'':'')}" placeholder="مثلاً: جنرال انگلیسی، آیلتس"></div>
 
@@ -2005,6 +2024,7 @@ function openTeacherModal(id){
     </div>
   `);
   updateTeacherPayField();
+  updatePersonnelRoleFields();
 }
 function updateTeacherPayField(){
   const sel = document.getElementById('f-t-paytype');
@@ -2054,6 +2074,14 @@ function personnelBranchFieldHtml(t){
   const cur = t ? (t.branch||'') : '';
   return `<select id="f-t-branch"><option value="">بدون شعبهٔ مشخص</option>${categoryOptionsHtml(BRANCHES, cur)}</select>`;
 }
+/* The online manager always works in the online unit. */
+function updatePersonnelRoleFields(){
+  const role = document.getElementById('f-t-role'), br = document.getElementById('f-t-branch');
+  if(!role || !br || isBranchManager()) return;
+  const online = role.value===HadafBranchScope.ONLINE_MANAGER_ROLE;
+  if(online) br.value = HadafBranchScope.ONLINE;
+  br.disabled = online;
+}
 function saveTeacher(id){
   const payType = document.getElementById('f-t-paytype').value;
   if(!payType){ alert('نوع پرداخت را انتخاب کنید.'); return; }
@@ -2068,7 +2096,8 @@ function saveTeacher(id){
   const hasEnd = document.getElementById('f-t-has-cend').checked;
   const createdAt = existing ? (existing.createdAt||todayISO()) : todayISO();
   const role = document.getElementById('f-t-role').value;
-  const branch = isBranchManager() ? (existing ? (existing.branch||'') : myBranch()) : document.getElementById('f-t-branch').value;
+  const branch = role===HadafBranchScope.ONLINE_MANAGER_ROLE ? HadafBranchScope.ONLINE
+    : isBranchManager() ? (existing ? (existing.branch||'') : myBranch()) : document.getElementById('f-t-branch').value;
   if(role===HadafBranchScope.MANAGER_ROLE && !branch){ alert('برای مدیر شعبه، شعبه را انتخاب کنید.'); return; }
   const rec = {
     id: id || uid(),
@@ -2076,6 +2105,7 @@ function saveTeacher(id){
     name: document.getElementById('f-t-name').value.trim() || 'بدون‌نام',
     role,
     branch,
+    gender: document.getElementById('f-t-gender').value,
     phone: document.getElementById('f-t-phone').value.trim(),
     subjects: document.getElementById('f-t-subjects').value.trim(),
     contractStart: jalaliPickerValue('f-t-cstart'),
@@ -2146,7 +2176,7 @@ function openTeacherProfileModal(teacherId){
 
   openModal(`
     <h3>پروندهٔ پرسنل</h3>
-    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span> · نقش: ${esc(t.role||'مدرس')}${t.branch?` · ${esc(t.branch)}`:''}</p>
+    <p class="sub">کد: <span class="code-badge" style="cursor:default;">${esc(t.code||'-')}</span> · نقش: ${esc(t.role||'مدرس')}${t.branch?` · ${esc(t.branch)}`:''}${PERSONNEL_GENDERS[t.gender]?` · ${PERSONNEL_GENDERS[t.gender]}`:''}</p>
     ${passwordBlock}
     ${typeof teacherAdvanceAdminHtml==='function' ? teacherAdvanceAdminHtml(t) : ''}
     <div class="profile-grid">
@@ -3758,7 +3788,7 @@ function populateGateSelects(){
   }
   const mgrSel = document.getElementById('gate-manager-select');
   if(mgrSel){
-    const managers = dir.teachers.filter(t=>t.role==='مدیریت');
+    const managers = dir.teachers.filter(t=>HadafBranchScope.isManagerRole(t.role));
     mgrSel.innerHTML = '<option value="">نام خود را انتخاب کنید</option>' +
       managers.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }

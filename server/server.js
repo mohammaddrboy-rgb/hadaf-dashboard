@@ -21,7 +21,7 @@
  *
  * What each role gets:
  *   - shareholder: everything, including login passwords (they manage them).
- *   - manager: like teacher/employee below, but only their own branch's data
+ *   - manager (branch manager or online manager): like teacher/employee below, but only their own branch's data
  *     (js/branch-scope.js); their writes can't change other branches' data.
  *   - teacher / employee: everything except passwords (replaced by
  *     HIDDEN_PASSWORD). Their writes can't change passwords of existing people,
@@ -58,7 +58,9 @@ const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;  // 30 days
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS_PER_IP = 20;
 const MAX_FAILS_PER_ACCOUNT = 10;
-const PERSONNEL_ROLE = { manager: 'مدیریت', teacher: 'مدرس', employee: 'کارمند' };
+// Login role -> personnel roles that may use it. The online manager logs in as a
+// manager and is limited to the online unit (js/branch-scope.js).
+const PERSONNEL_ROLE = { manager: ['مدیریت', 'مدیر آنلاین'], teacher: ['مدرس'], employee: ['کارمند'] };
 const PASSWORD_COLLECTIONS = ['shareholders', 'teachers', 'studentProfiles'];
 const SHAREHOLDER_ONLY_KEYS = ['shareholders', 'assets'];
 const UNSAFE_ID_CHARS = /[<>"'`\\\s&]/;
@@ -114,7 +116,7 @@ function sessionOf(req, data) {
 function findActor(data, role, actorId) {
   if (!data) return null;
   if (role === 'shareholder') return (data.shareholders || []).find((x) => x.id === actorId) || null;
-  if (PERSONNEL_ROLE[role]) return (data.teachers || []).find((x) => x.id === actorId && x.role === PERSONNEL_ROLE[role]) || null;
+  if (PERSONNEL_ROLE[role]) return (data.teachers || []).find((x) => x.id === actorId && PERSONNEL_ROLE[role].includes(x.role)) || null;
   if (role === 'student') return (data.studentProfiles || []).find((x) => x.id === actorId) || null;
   return null;
 }
