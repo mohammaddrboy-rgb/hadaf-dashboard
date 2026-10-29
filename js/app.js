@@ -294,14 +294,19 @@ function numFmt(n){
   return withSign.replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
 }
 function afn(n){ return numFmt(n) + ' افغانی'; }
+/* Persian (۰-۹) and Arabic-Indic (٠-٩) digits -> 0-9. Amount boxes are filled
+   with numFmt (Persian digits), so they must be read back through this. */
+function toLatinDigits(v){
+  return String(v==null?'':v).replace(/[۰-۹]/g, d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+}
 function formatMoneyInput(el){
-  const raw = el.value.replace(/[^\d]/g,'');
+  const raw = toLatinDigits(el.value).replace(/[^\d]/g,'');
   el.value = raw ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
 }
 function moneyNum(id){
   const el = document.getElementById(id);
   if(!el) return 0;
-  return Number((el.value||'').replace(/,/g,'')) || 0;
+  return Number(toLatinDigits(el.value).replace(/[,٬،\s]/g,'')) || 0;
 }
 /* Local-timezone date -> YYYY-MM-DD. (toISOString() converts to UTC, which
    shifts the date back a day in Afghanistan/any positive-UTC timezone.) */
@@ -758,6 +763,7 @@ const EXPENSE_CATEGORIES = ['حقوق و دستمزد مدرسان','اجاره�
 const PROJECT_CATEGORIES = ['کمپین تبلیغاتی','دورهٔ فشرده/کارگاه','آزمون آزمایشی (Mock Test)','مراسم فارغ‌التحصیلی','همکاری با نهاد دیگر','سایر'];
 const BRANCHES = HadafBranchScope.BRANCHES; // شعبه مرکزی، شعبه قلعه نو، شعبه سرپل (js/branch-scope.js)
 const FAMILY_DISCOUNT_PERCENT = 25;
+const DEFAULT_ID_CARD_PRICE = 50; // student card price filled in for every new registration (AFN)
 const SEMINAR_TYPES = ['سمینار','وبینار','کارگاه'];
 const SEMINAR_MODES = ['حضوری','آنلاین','حضوری و آنلاین'];
 /* Class types: the built-in list above, plus the types shareholders/managers
@@ -1701,7 +1707,7 @@ function openStudentModal(id){
       </label>
     </div>
     <div class="field-row">
-      <div class="field"><label>قیمت کارت شاگردی</label><input id="f-st-idcard-price" class="money-input" value="${esc(s&&s.idCardPrice?numFmt(s.idCardPrice):'۱۵۰')}" oninput="formatMoneyInput(this)"></div>
+      <div class="field"><label>قیمت کارت شاگردی</label><input id="f-st-idcard-price" class="money-input" value="${esc(s ? (s.idCardPrice?numFmt(s.idCardPrice):'') : numFmt(DEFAULT_ID_CARD_PRICE))}" oninput="formatMoneyInput(this)"></div>
       <div class="field">
         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-top:24px;">
           <input type="checkbox" id="f-st-idcard-paid" style="width:auto;" ${s&&s.idCardPaid?'checked':''}>

@@ -1,3 +1,36 @@
+# Latest update: student card 50 AFN, and amounts kept when editing (October 2026)
+
+- New registrations now fill «قیمت کارت شاگردی» with **50** AFN (was 150).
+  Existing registrations keep the price they were saved with.
+- **Bug fix:** amount boxes are filled with Persian digits (e.g. ۳,۵۰۰), but
+  saving read only Latin digits, so opening an existing record (a
+  registration, expense, other income, book purchase, seminar, advance or
+  staff salary) and saving it **without retyping the amounts stored 0**.
+  Saving now reads Persian and Arabic digits too. Records already saved
+  with 0 this way are not changed automatically; see the check below.
+
+To deploy: merge the pull request into `main`, back up the data, then copy
+`index.html` and `js/` into the web root. **`server/server.js` did not
+change, so the sync server does not need a restart**, and nginx needs no
+change. Check: `curl -s https://SITE/ | grep -o 'js/app.js?v=[0-9.]*'`
+prints `js/app.js?v=5.6`; then staff reload open tabs.
+
+Optional check for amounts lost to the old bug (read-only; lists records
+whose amount is 0, which staff can compare with receipts):
+
+```bash
+sudo node -e '
+const d=require("/var/www/hadaf-data/db.json");
+const name=id=>((d.studentProfiles||[]).find(p=>p.id===id)||{}).name||id;
+const z=(k,f)=>(d[k]||[]).filter(r=>!Number(r[f]));
+console.log("Registrations with fee 0:", z("students","feeAmount").map(s=>name(s.profileId)+" ("+s.registerDate+")").join(", ")||"none");
+console.log("Expenses with amount 0:", z("expenses","amount").map(e=>e.category+" "+e.date).join(", ")||"none");
+console.log("Other income with amount 0:", z("donations","amount").map(e=>e.donorName+" "+e.date).join(", ")||"none");
+console.log("Staff with salary amount 0:", (d.teachers||[]).filter(t=>t.payType&&!Number(t.payAmount)).map(t=>t.name).join(", ")||"none");'
+```
+
+---
+
 # Latest update: faster and more responsive on PC and mobile (October 2026)
 
 - **Speed:** saving redraws only the page on screen (other pages refresh
