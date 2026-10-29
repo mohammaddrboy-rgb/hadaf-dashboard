@@ -1,3 +1,29 @@
+# Latest update: Dari + English (October 2026)
+
+The whole dashboard can now be used in English. A language button
+(«English» / «دری») sits on the login page and in the header; English is
+shown left to right with Latin digits and English Afghan month names
+(Hamal … Hut). Pages, forms, messages, charts, receipts, the discount-code
+sheet and Excel exports all follow the chosen language. Each person's
+choice is remembered in their browser; Dari stays the default. Names,
+class titles and notes typed by staff are shown as typed.
+
+New files: `js/i18n.js` (loaded in `<head>`) and `js/i18n-en.js` (the
+English dictionary, loaded only when English is chosen).
+
+To deploy: merge the pull request into `main`, then copy `index.html`,
+`css/` and `js/` into the web root (including the two new files).
+**`server/server.js` did not change, so the sync server does not need a
+restart**, and nginx needs no change; no data step. Check:
+- `curl -s https://SITE/ | grep -o 'js/i18n.js?v=[0-9.]*\|js/app.js?v=[0-9.]*'`
+  prints `js/i18n.js?v=1.0` and `js/app.js?v=5.8`;
+- `curl -s -o /dev/null -w "%{http_code}\n" https://SITE/js/i18n-en.js` prints `200`;
+- in a browser, press «English» on the login page: the page turns English
+  and left to right.
+Then staff reload open tabs.
+
+---
+
 # Latest update: login-page notice wording (October 2026)
 
 The «تازه‌ترین تغییرات سامانه» notice on the login page no longer mentions

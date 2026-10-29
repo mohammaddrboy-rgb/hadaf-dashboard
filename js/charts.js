@@ -27,8 +27,8 @@
   /* Short money label for axis ticks and end labels: ۱۲۰٬۰۰۰ → «۱۲۰ هزار». */
   function shortMoney(v) {
     var a = Math.abs(v), sign = v < 0 ? '−' : '';
-    if (a >= 1e6) return sign + faDigits((Math.round(a / 1e5) / 10).toString()) + ' میلیون';
-    if (a >= 1e3) return sign + faDigits(Math.round(a / 1e3).toString()) + ' هزار';
+    if (a >= 1e6) return sign + faDigits((Math.round(a / 1e5) / 10).toString()) + (window.hadafIsEn ? 'M' : ' میلیون');
+    if (a >= 1e3) return sign + faDigits(Math.round(a / 1e3).toString()) + (window.hadafIsEn ? 'K' : ' هزار');
     return sign + faDigits(Math.round(a).toString());
   }
   function niceStep(range, count) {
@@ -71,18 +71,20 @@
     min = Math.floor(min / step) * step; max = Math.ceil(max / step) * step;
     if (max === min) max = min + step;
 
-    // RTL: the first month sits on the right (start side), time runs right→left.
+    // The first month sits on the start side: right in Dari (time runs right→left),
+    // left in English.
+    var rtl = !window.hadafIsEn;
     var n = data.labels.length;
     var innerW = W - pad.start - pad.end;
-    function x(i) { return W - pad.start - (n === 1 ? innerW / 2 : innerW * i / (n - 1)); }
+    function x(i) { var f = n === 1 ? innerW / 2 : innerW * i / (n - 1); return rtl ? W - pad.start - f : pad.start + f; }
     function y(v) { return pad.top + (H - pad.top - pad.bottom) * (1 - (v - min) / (max - min)); }
 
     var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', tabindex: '0',
       'aria-label': 'نمودار ' + data.series.map(function (s) { return s.name; }).join('، ') + ' — با کلیدهای جهت‌دار ماه‌ها را مرور کنید' });
     var grid = el('g', { class: 'grid' }, svg);
     for (var t = min; t <= max + step / 2; t += step) {
-      el('line', { x1: pad.end, x2: W - pad.start, y1: y(t), y2: y(t), class: t === 0 ? 'baseline' : '' }, grid);
-      var tl = el('text', { x: W - pad.start + 8, y: y(t) + 4, class: 'tick', 'text-anchor': 'start' }, svg);
+      el('line', { x1: rtl ? pad.end : pad.start, x2: rtl ? W - pad.start : W - pad.end, y1: y(t), y2: y(t), class: t === 0 ? 'baseline' : '' }, grid);
+      var tl = el('text', { x: rtl ? W - pad.start + 8 : pad.start - 8, y: y(t) + 4, class: 'tick', 'text-anchor': rtl ? 'start' : 'end' }, svg);
       tl.textContent = tickFmt(t);
     }
     data.labels.forEach(function (lab, i) {
@@ -106,7 +108,7 @@
       el('circle', { cx: cx, cy: cy, r: 4.5, class: 'end-dot', fill: s.color }, svg);
       if (W >= 480 && used.every(function (u) { return Math.abs(u - cy) > 15; })) {
         used.push(cy);
-        var lab = el('text', { x: cx - 10, y: cy + 4, class: 'end-label', 'text-anchor': 'end' }, svg);
+        var lab = el('text', { x: rtl ? cx - 10 : cx + 10, y: cy + 4, class: 'end-label', 'text-anchor': rtl ? 'end' : 'start' }, svg);
         lab.textContent = tickFmt(v);
       }
     });
@@ -150,9 +152,10 @@
     svg.addEventListener('blur', hide);
     svg.addEventListener('focus', function () { show(n - 1); });
     svg.addEventListener('keydown', function (e) {
-      // RTL: ArrowLeft moves forward in time
-      if (e.key === 'ArrowLeft') { e.preventDefault(); show(Math.min(n - 1, (current < 0 ? n - 1 : current + 1))); }
-      if (e.key === 'ArrowRight') { e.preventDefault(); show(Math.max(0, (current < 0 ? n - 1 : current - 1))); }
+      // Forward in time is ArrowLeft in Dari (RTL), ArrowRight in English.
+      var fwd = rtl ? 'ArrowLeft' : 'ArrowRight', back = rtl ? 'ArrowRight' : 'ArrowLeft';
+      if (e.key === fwd) { e.preventDefault(); show(Math.min(n - 1, (current < 0 ? n - 1 : current + 1))); }
+      if (e.key === back) { e.preventDefault(); show(Math.max(0, (current < 0 ? n - 1 : current - 1))); }
       if (e.key === 'Escape') hide();
     });
 
@@ -186,7 +189,7 @@
     if (n < 2) return '';
     var mn = Math.min.apply(null, values), mx = Math.max.apply(null, values);
     if (mx === mn) { mx += 1; mn -= 1; }
-    var pts = values.map(function (v, i) { return [W - (W * i / (n - 1)), 3 + (H - 6) * (1 - (v - mn) / (mx - mn))]; });
+    var pts = values.map(function (v, i) { var f = W * i / (n - 1); return [window.hadafIsEn ? f : W - f, 3 + (H - 6) * (1 - (v - mn) / (mx - mn))]; });
     var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
     var last = pts[n - 1];
     return '<svg class="sparkline" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true"><path class="line" d="' + d + '"/><circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="3.5"/></svg>';
@@ -239,7 +242,7 @@
     document.getElementById('dash-hero').innerHTML =
       '<div>' +
         '<div class="hero-eyebrow">باقیماندهٔ خالص <span class="pill">' + esc(salaryPeriodLabel(curP.y, curP.m)) + '</span></div>' +
-        '<div class="hero-figure"><span data-count="' + cur.net + '" data-fmt="num">' + numFmt(cur.net) + '</span><small>افغانی</small></div>' +
+        '<div class="hero-figure"><span data-count="' + cur.net + '" data-fmt="num">' + numFmt(cur.net) + '</span><small>' + (window.hadafIsEn ? 'AFN' : 'افغانی') + '</small></div>' +
         '<div class="hero-sub">' + deltaHtml(cur.net, prev.net, true) + '<span>در مقایسه با ' + esc(salaryPeriodLabel(months[4].y, months[4].m)) + '</span></div>' +
       '</div>' +
       '<div class="hero-split">' +

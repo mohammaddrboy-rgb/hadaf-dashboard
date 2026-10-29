@@ -291,9 +291,9 @@ function numFmt(n){
   const neg = n<0; n = Math.abs(n);
   const grouped = n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const withSign = (neg?'-':'') + grouped;
-  return withSign.replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+  return window.hadafIsEn ? withSign : withSign.replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
 }
-function afn(n){ return numFmt(n) + ' افغانی'; }
+function afn(n){ return numFmt(n) + (window.hadafIsEn ? ' AFN' : ' افغانی'); }
 /* Persian (۰-۹) and Arabic-Indic (٠-٩) digits -> 0-9. Amount boxes are filled
    with numFmt (Persian digits), so they must be read back through this. */
 function toLatinDigits(v){
@@ -314,9 +314,12 @@ function dateToISO(dt){ const y=dt.getFullYear(); const m=String(dt.getMonth()+1
 function todayISO(){ return dateToISO(new Date()); }
 
 /* ---------------- Dari (Solar Hijri) calendar ---------------- */
-const AFG_MONTHS=['حمل','ثور','جوزا','سرطان','اسد','سنبله','میزان','عقرب','قوس','جدی','دلو','حوت'];
+// Afghan (Solar Hijri) months; English names when the dashboard is in English.
+const AFG_MONTHS = window.hadafIsEn
+  ? ['Hamal','Sawr','Jawza','Saratan','Asad','Sunbula','Mizan','Aqrab','Qaws','Jadi','Dalw','Hut']
+  : ['حمل','ثور','جوزا','سرطان','اسد','سنبله','میزان','عقرب','قوس','جدی','دلو','حوت'];
 const FA_DIGITS='۰۱۲۳۴۵۶۷۸۹';
-function faDigits(n){ return String(n).replace(/\d/g, d=>FA_DIGITS[d]); }
+function faDigits(n){ return window.hadafIsEn ? String(n) : String(n).replace(/\d/g, d=>FA_DIGITS[d]); }
 
 /* ---------------- Pagination ---------------- */
 const PAGE_SIZE = 20;
@@ -904,8 +907,10 @@ function downloadWorkbookFromRows(rowsByCategory, filenamePrefix){
   if(typeof XLSX==='undefined'){ alert('کتابخانهٔ اکسل بارگذاری نشد. اتصال اینترنت را بررسی کنید.'); return; }
   const wb = XLSX.utils.book_new();
   Object.entries(rowsByCategory).forEach(([name, rows])=>{
-    const ws = XLSX.utils.json_to_sheet(rows && rows.length ? rows : [{'-':'داده‌ای موجود نیست'}]);
-    XLSX.utils.book_append_sheet(wb, ws, name.slice(0,31));
+    // Column names and text cells follow the chosen language (js/i18n.js).
+    const data = hadafTranslateRows(rows && rows.length ? rows : [{'-':'داده‌ای موجود نیست'}]);
+    const ws = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, tr(name).replace(/[\\/?*\[\]:]/g,' ').slice(0,31));
   });
   XLSX.writeFile(wb, `${filenamePrefix}-${todayISO()}.xlsx`);
 }
@@ -1068,7 +1073,7 @@ function formatTimeAmPm(t){
   if(!t) return '';
   const parts = t.split(':').map(Number);
   const h = parts[0], m = parts[1]||0;
-  const period = h<12 ? 'صبح' : 'عصر';
+  const period = window.hadafIsEn ? (h<12 ? 'AM' : 'PM') : (h<12 ? 'صبح' : 'عصر');
   let h12 = h%12; if(h12===0) h12=12;
   return `${faDigits(h12)}:${faDigits(String(m).padStart(2,'0'))} ${period}`;
 }
@@ -1082,7 +1087,9 @@ function classTimeLabel(c){
    defined by its start date (chosen freely) and its number of sessions; the
    end date is the date of the last session. */
 const CLASS_DEFAULT_SESSIONS = 26; // ≈ one month at 6 sessions per week
-const WEEKDAY_NAMES = ['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه']; // index = Date.getDay()
+const WEEKDAY_NAMES = window.hadafIsEn // index = Date.getDay()
+  ? ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+  : ['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه'];
 function isClassDay(iso){ return new Date(iso+'T00:00:00').getDay()!==5; }
 function weekdayName(iso){ return WEEKDAY_NAMES[new Date(iso+'T00:00:00').getDay()]; }
 /* The first `count` class days (Sat–Thu) on or after `startISO`. */
@@ -1266,7 +1273,7 @@ function studentStatusTagClass(st){
    the classes the user may register into (a branch manager only has their
    own branch's classes). Finished classes are hidden unless asked for. */
 let classPickerQuery = '', classPickerShowEnded = false;
-function classTeacherNames(c){ return classTeacherIds(c).map(teacherName).join(' و ') || '-'; }
+function classTeacherNames(c){ return classTeacherIds(c).map(teacherName).join(window.hadafIsEn ? ' & ' : ' و ') || '-'; }
 function classEnrolledCount(c){ return db.students.filter(s=>s.classId===c.id).length; }
 function classPickerFieldHtml(selectedId){
   return `<input type="hidden" id="f-st-class" value="${esc(selectedId||'')}">
@@ -3471,7 +3478,7 @@ function renderAttendanceGrid(){
 
   const shared = isSharedClass(c);
   const sharedLegend = shared ? `<div class="hint" style="margin:0 0 8px;">صنف دو مدرسه — <b>م۱</b>: ${esc(teacherName(c.teacherId))}${c.teacherSkills?` (${esc(c.teacherSkills)})`:''} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,c.teacherId)])} &nbsp;|&nbsp; <b>م۲</b>: ${esc(teacherName(c.teacher2Id))}${c.teacher2Skills?` (${esc(c.teacher2Skills)})`:''} · ${esc(SHARED_DAY_LABELS[classTeacherDaysKey(c,c.teacher2Id)])}</div>` : '';
-  const head = `<th style="position:sticky; right:0; background:var(--panel-2); min-width:150px;">شاگرد</th>` +
+  const head = `<th style="position:sticky; inset-inline-start:0; background:var(--panel-2); min-width:150px;">شاگرد</th>` +
     dates.map(d=>{ const p=g2jParts(d);
       // Two-teacher class: mark which teacher (۱ / ۲) takes this day.
       const who = shared ? (classTeacherOnDate(c, d)===c.teacherId ? '۱' : '۲') : '';
@@ -3494,7 +3501,7 @@ function renderAttendanceGrid(){
     let summary;
     if(isAct){ const p=studentParticipationTotals(classId,s.id); summary=`<span style="color:var(--income);">+${faDigits(p.plus)}</span> / <span style="color:var(--cost);">−${faDigits(p.minus)}</span>`; }
     else { const t=studentAttendanceTotals(classId,s.id); summary=`${faDigits(t.present)} / ${faDigits(t.absent)}`; }
-    return `<tr><td style="position:sticky; right:0; background:var(--panel);">${esc(profileName(s.profileId))}</td>${cells}<td class="num" id="att-summary__${esc(classId)}__${esc(s.id)}">${summary}</td></tr>`;
+    return `<tr><td style="position:sticky; inset-inline-start:0; background:var(--panel);">${esc(profileName(s.profileId))}</td>${cells}<td class="num" id="att-summary__${esc(classId)}__${esc(s.id)}">${summary}</td></tr>`;
   }).join('');
 
   const hint = isAct
