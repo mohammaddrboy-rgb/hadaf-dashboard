@@ -68,7 +68,7 @@
     });
     G.fromTo(inner, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.55, ease: 'power3.out', stagger: 0.045, clearProps: 'transform,opacity' });
     var rows = $$('tbody tr', view).filter(function (r) { return r.offsetParent; }).slice(0, 14);
-    G.fromTo(rows, { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.35, ease: 'power2.out', stagger: 0.018, delay: 0.12, clearProps: 'transform,opacity' });
+    G.fromTo(rows, { opacity: 0, x: window.hadafIsEn ? 8 : -8 }, { opacity: 1, x: 0, duration: 0.35, ease: 'power2.out', stagger: 0.018, delay: 0.12, clearProps: 'transform,opacity' });
   }
 
   /* ---------------- Sidebar: sliding indicator + collapse ---------------- */
@@ -252,8 +252,8 @@
     // Rank: name starts with the query > name contains it > only the description does.
     var score = function (it) {
       if (!q) return 1;
-      var l = norm(it.label);
-      return l.indexOf(q) === 0 ? 3 : l.indexOf(q) >= 0 ? 2 : norm(it.sub).indexOf(q) >= 0 ? 1 : 0;
+      var l = norm(tr(it.label));   // tr: match what is shown (English when chosen)
+      return l.indexOf(q) === 0 ? 3 : l.indexOf(q) >= 0 ? 2 : norm(tr(it.sub)).indexOf(q) >= 0 ? 1 : 0;
     };
     var ranked = function (list) { return list.map(function (it) { it._s = score(it); return it; }).filter(function (it) { return it._s > 0; }).sort(function (a, b) { return b._s - a._s; }); };
     var groups = [['بخش‌ها', ranked(views)], ['کارها', ranked(acts)]];
@@ -392,7 +392,8 @@
     else {
       stopGate();
       buildTabbar(); refreshIdentity(); moveIndicator(true);
-      if (G) G.fromTo('.sidebar', { x: 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: 'expo.out', clearProps: 'transform,opacity' });
+      // Only where the sidebar is on screen; on phones it is an off-canvas menu.
+      if (G && window.matchMedia('(min-width: 901px)').matches) G.fromTo('.sidebar', { x: window.hadafIsEn ? -40 : 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, ease: 'expo.out', clearProps: 'transform,opacity' });
       enterView($('.view.active'));
     }
   }).observe(gate, { attributes: true, attributeFilter: ['class'] });

@@ -553,6 +553,8 @@ function printStudentProfile(profileId, enrollmentId){
     .receipt.h .c-items{ flex-direction:row; justify-content:flex-start; padding:0; }
     .receipt.h .r-item{ width:52mm; padding:3mm; display:flex; flex-direction:column; justify-content:center; }
     .receipt.h .r-item + .r-item{ border-right:1px dashed #000; }
+    /* English: same right-to-left column order, so the header still prints first */
+    html[dir=ltr] .receipt.h, html[dir=ltr] .receipt.h .c-items{ flex-direction:row-reverse; }
     .receipt.h .c-tot{ width:46mm; }
     .receipt.h .r-foot{ margin-top:6px; }
     #h-wrap{ padding:8px 0; overflow-x:auto; }
@@ -689,7 +691,8 @@ function printStudentProfile(profileId, enrollmentId){
   <script>
     var MM = 25.4/96; // CSS px -> mm
     var S = { size: ${JSON.stringify(prefs.size)}, orient: ${JSON.stringify(prefs.orient)}, enr: ${JSON.stringify(selected)} };
-    function fa(n){ n=Math.round(Number(n)||0); var neg=n<0; var g=Math.abs(n).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ','); return ((neg?'-':'')+g).replace(/\\d/g, function(d){ return '۰۱۲۳۴۵۶۷۸۹'[d]; }) + ' افغانی'; }
+    var EN = ${window.hadafIsEn ? 'true' : 'false'};
+    function fa(n){ n=Math.round(Number(n)||0); var neg=n<0; var g=(neg?'-':'')+Math.abs(n).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ','); return EN ? g + ' AFN' : g.replace(/\\d/g, function(d){ return '۰۱۲۳۴۵۶۷۸۹'[d]; }) + ' افغانی'; }
     function savePrefs(){ try{ var o=window.opener; if(o && o.setPrintPrefs) o.setPrintPrefs({ size:S.size, orient:S.orient }); }catch(e){} }
     function apply(){
       var thermal = S.size==='thermal80', horiz = S.orient==='landscape';
