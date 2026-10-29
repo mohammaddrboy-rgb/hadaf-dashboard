@@ -1,3 +1,17 @@
+# Latest update: login-page notice wording (October 2026)
+
+The «تازه‌ترین تغییرات سامانه» notice on the login page no longer mentions
+the online manager's personnel code. Nothing else changes; Zahra Alizada
+keeps the code she already has (codes are never regenerated for an
+existing person).
+
+To deploy: merge the pull request into `main`, then copy `index.html` and
+`js/` into the web root. No server restart, no nginx change, no data step.
+Check: `curl -s https://SITE/ | grep -o 'js/updates2.js?v=[0-9.]*'` prints
+`js/updates2.js?v=2.6`.
+
+---
+
 # Latest update: Online unit and Online Manager role (October 2026)
 
 - **«آنلاین» (Online)** is now a unit next to the three branches. It
