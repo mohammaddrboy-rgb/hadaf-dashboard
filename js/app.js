@@ -128,6 +128,10 @@ if(!db.discountCodesSeeded){
 }
 function migrateLegacyData(){
   if(db.__view) return; // trimmed per-user copy from the server (student): nothing to migrate
+  // Data from the server may lack lists no one has used yet (e.g. teacherAttendance).
+  ['classes','students','teachers','donations','expenses','projects','meetings','seminars','teacherAdvances','studentProfiles','shareholders','bookPurchases','attendance','activityLog','discountCodes','assets','teacherAttendance','advanceRequests'].forEach(k=>{ if(!Array.isArray(db[k])) db[k]=[]; });
+  if(!db.referralSettings) db.referralSettings = { referrerDiscount:5, refereeDiscount:10 };
+  if(!db.discountCodeSettings) db.discountCodeSettings = { defaultDiscount:10, defaultCommission:5 };
   let changed = false;
   db.teachers.forEach(t=>{
     if(!t.role){ t.role='مدرس'; changed=true; }
@@ -510,6 +514,7 @@ function currentRoleLabel(){
     const me = (db.teachers||[]).find(t=>t.id===currentTeacherId);
     if(me && me.role===HadafBranchScope.ONLINE_MANAGER_ROLE) return 'مدیر آنلاین';
   }
+  if(isAcademicManager()) return 'مدرس و مدیر علمی';
   return ROLE_LABELS[currentRole] || '';
 }
 let currentRole = sessionStorage.getItem('hadaf_role') || '';
@@ -522,7 +527,7 @@ function navAllowed(view){
   if(view==='myIncome') return currentRole==='teacher' || currentRole==='manager' || currentRole==='employee'; // personal income/salary page for all personnel
   if(currentRole==='shareholder') return true;
   if(currentRole==='manager') return view!=='shareholders' && view!=='activityLog' && view!=='assets' && view!=='taxReport';
-  if(currentRole==='teacher') return view==='classes' || view==='attendance' || view==='myIncome';
+  if(currentRole==='teacher') return view==='classes' || view==='attendance' || view==='myIncome' || (view==='teacherDiscipline' && isAcademicManager());
   if(currentRole==='employee') return view==='classes' || view==='students' || view==='seminars' || view==='books' || view==='discountCodes';
   return false;
 }
@@ -531,6 +536,16 @@ function navAllowed(view){
    The server already sends them only that part; trimming the local copy too
    also covers data this browser kept from an earlier user. */
 function myBranch(){ return currentRole==='manager' ? HadafBranchScope.managerBranch(db, currentTeacherId) : ''; }
+/* A teacher who is also the academic manager sees every class (online and on
+   site, all branches), their attendance and grades, and the teachers'
+   present/absent page. Only shareholders grant it (personnel form). */
+function isAcademicManager(){
+  if(currentRole!=='teacher' || typeof db==='undefined' || !db) return false;
+  return HadafBranchScope.isAcademicManager((db.teachers||[]).find(t=>t.id===currentTeacherId));
+}
+/* Plain teachers only see their own classes, and not finished (filed) ones. */
+function isPlainTeacher(){ return currentRole==='teacher' && !isAcademicManager(); }
+function isOnlineManager(){ return myBranch()===HadafBranchScope.ONLINE; }
 function isBranchManager(){ return currentRole==='manager'; }
 function visibleBranches(){ return isBranchManager() ? [myBranch()].filter(Boolean) : BRANCHES; }
 function applyManagerScope(){
@@ -846,8 +861,10 @@ function seminarLocationOptionsHtml(selected){
   return categoryOptionsHtml([...new Set([...visibleBranches(),'آنلاین'])], selected);
 }
 /* Branch choices for a form: a branch manager only gets their own branch. */
-function branchOptionsHtml(selected){
-  const list = visibleBranches();
+function branchOptionsHtml(selected, keepSelected){
+  const list = visibleBranches().slice();
+  // The online manager edits online classes filed under a branch: they keep their branch.
+  if(keepSelected && selected && BRANCHES.includes(selected) && !list.includes(selected)) list.push(selected);
   if(!list.length) return '<option value="">شعبهٔ شما تعیین نشده است</option>';
   return categoryOptionsHtml(list, list.includes(selected) ? selected : list[0]);
 }
@@ -1373,7 +1390,7 @@ function openClassModal(id){
     <p class="sub">نوع فعالیت، مدرس، تاریخ آغاز/پایان و ظرفیت صنف را وارد کنید</p>
 
     <div class="field-row">
-      <div class="field"><label>شعبه</label><select id="f-cls-branch" onchange="onClassBranchChange()">${branchOptionsHtml(c?c.branch:'')}</select></div>
+      <div class="field"><label>شعبه</label><select id="f-cls-branch" onchange="onClassBranchChange()">${branchOptionsHtml(c?c.branch:'', isOnlineManager() && !!c)}</select></div>
       <div class="field"><label>نوع صنف</label>
         <div style="display:flex; gap:6px;">
           <select id="f-cls-category" style="flex:1;" onchange="updateClassCategoryField()">${classCategoryOptionsHtml(c?c.category:CLASS_CATEGORIES[0])}</select>
@@ -1468,7 +1485,8 @@ function classFormSessionCount(){
 /* Live preview of the session dates in the class form. */
 /* Classes of the online unit are always held online. */
 function onClassBranchChange(){
-  const online = document.getElementById('f-cls-branch').value===HadafBranchScope.ONLINE;
+  // The online manager's classes are always online, whatever branch they are filed under.
+  const online = document.getElementById('f-cls-branch').value===HadafBranchScope.ONLINE || isOnlineManager();
   const mode = document.getElementById('f-cls-mode');
   if(online) mode.value = 'آنلاین';
   mode.disabled = online;
@@ -1527,7 +1545,7 @@ function saveClass(id){
     teacher2Id: shared ? t2 : '',
     teacher2Skills: shared ? document.getElementById('f-cls-skills2').value.trim() : '',
     teacher1Days: shared ? document.getElementById('f-cls-days1').value : '',
-    mode: document.getElementById('f-cls-branch').value===HadafBranchScope.ONLINE ? 'آنلاین' : document.getElementById('f-cls-mode').value,
+    mode: (document.getElementById('f-cls-branch').value===HadafBranchScope.ONLINE || isOnlineManager()) ? 'آنلاین' : document.getElementById('f-cls-mode').value,
     capacity: Number(document.getElementById('f-cls-capacity').value)||0,
     startTime: document.getElementById('f-cls-start-time').value,
     endTime: document.getElementById('f-cls-end-time').value,
@@ -1991,6 +2009,12 @@ function openTeacherModal(id){
       <div class="field"><label>نام</label><input id="f-t-name" value="${esc(t?t.name:'')}"></div>
       <div class="field"><label>نقش</label><select id="f-t-role" onchange="updatePersonnelRoleFields()">${personnelRoleOptionsHtml(t?t.role:'مدرس')}</select></div>
     </div>
+    <div class="field" id="f-t-academic-box">
+      <label style="display:flex; align-items:center; gap:6px; cursor:${currentRole==='shareholder'?'pointer':'default'};">
+        <input type="checkbox" id="f-t-academic" style="width:auto;" ${t&&t.academicManager===true?'checked':''} ${currentRole==='shareholder'?'':'disabled'}>
+        مدیر علمی (این مدرس همهٔ صنف‌های آنلاین و حضوری و حضور مدرسان را هم می‌بیند)
+      </label>
+    </div>
     <div class="field"><label>جنسیت</label><select id="f-t-gender"><option value="">—</option>${Object.entries(PERSONNEL_GENDERS).map(([k,v])=>`<option value="${k}" ${t&&t.gender===k?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="field-row">
       <div class="field"><label>شماره تماس</label><input id="f-t-phone" value="${esc(t?t.phone||'':'')}"></div>
@@ -2085,9 +2109,12 @@ function personnelBranchFieldHtml(t){
   const cur = t ? (t.branch||'') : '';
   return `<select id="f-t-branch"><option value="">بدون شعبهٔ مشخص</option>${categoryOptionsHtml(BRANCHES, cur)}</select>`;
 }
-/* The online manager always works in the online unit. */
+/* The online manager always works in the online unit; the academic-manager
+   permission is for teachers. */
 function updatePersonnelRoleFields(){
   const role = document.getElementById('f-t-role'), br = document.getElementById('f-t-branch');
+  const ac = document.getElementById('f-t-academic-box');
+  if(ac && role) ac.style.display = role.value==='مدرس' ? '' : 'none';
   if(!role || !br || isBranchManager()) return;
   const online = role.value===HadafBranchScope.ONLINE_MANAGER_ROLE;
   if(online) br.value = HadafBranchScope.ONLINE;
@@ -2117,6 +2144,7 @@ function saveTeacher(id){
     role,
     branch,
     gender: document.getElementById('f-t-gender').value,
+    academicManager: (currentRole==='shareholder' ? (role==='مدرس' && document.getElementById('f-t-academic').checked) : !!(existing && existing.academicManager===true)) || undefined,
     phone: document.getElementById('f-t-phone').value.trim(),
     subjects: document.getElementById('f-t-subjects').value.trim(),
     contractStart: jalaliPickerValue('f-t-cstart'),
@@ -2693,11 +2721,34 @@ document.getElementById('classes-filters').addEventListener('click', e=>{
   renderClassesFilterChips();
   renderClasses();
 });
+/* Finished classes are filed in an archive: the list shows running and
+   upcoming classes; «بایگانی» shows the finished ones. Plain teachers never
+   see finished classes. */
+let classArchiveFilter = 'current';
+function renderClassesArchiveChips(){
+  const el = document.getElementById('classes-archive-filters'); if(!el) return;
+  if(isPlainTeacher()){ el.style.display = 'none'; classArchiveFilter = 'current'; return; }
+  el.style.display = '';
+  const finished = db.classes.filter(c=>classStatus(c)==='پایان‌یافته').length;
+  el.innerHTML = [['current','جاری و آینده'],['archive',`بایگانی (پایان‌یافته: ${faDigits(finished)})`],['all','همهٔ صنف‌ها']].map(([k,l])=>
+    `<button type="button" class="chip ${classArchiveFilter===k?'active':''}" data-archive="${k}">${esc(l)}</button>`).join('');
+}
+document.getElementById('classes-archive-filters').addEventListener('click', e=>{
+  const chip = e.target.closest('.chip'); if(!chip) return;
+  classArchiveFilter = chip.dataset.archive;
+  paginationState['classes'] = 1;
+  renderClasses();
+});
 function renderClasses(){
   let source = db.classes;
   // Teachers see only their own classes (across all branches); others see all
-  if(currentRole==='teacher') source = source.filter(c=>classHasTeacher(c, currentTeacherId));
-  const fullList = classBranchFilter==='all' ? source : source.filter(c=>c.branch===classBranchFilter);
+  if(isPlainTeacher()) source = source.filter(c=>classHasTeacher(c, currentTeacherId));
+  renderClassesArchiveChips();
+  const archive = isPlainTeacher() ? 'current' : classArchiveFilter;
+  if(archive==='current') source = source.filter(c=>classStatus(c)!=='پایان‌یافته');
+  else if(archive==='archive') source = source.filter(c=>classStatus(c)==='پایان‌یافته');
+  // «آنلاین» lists every class held online, whatever branch it is filed under.
+  const fullList = classBranchFilter==='all' ? source : source.filter(c=>HadafBranchScope.classInScope(c, classBranchFilter));
   const { pageItems: list, totalPages } = paginateList('classes', fullList);
   document.getElementById('classes-empty').style.display = fullList.length? 'none':'block';
   document.getElementById('classes-table').innerHTML = list.map(c=>{
@@ -2837,7 +2888,7 @@ function renderTeachers(){
       : `${esc(teacherPayLabel(t))} <span style="color:var(--text-faint);">(${esc(payTypeLabel(t))})</span>`;
     return `<tr>
       <td><span class="code-badge" onclick="openTeacherProfileModal('${escJs(t.id)}')">${esc(t.code||'-')}</span></td>
-      <td>${esc(t.name)}</td><td><span class="tag info">${esc(t.role||'مدرس')}</span>${t.branch?`<div style="font-size:11px; color:var(--text-dim); margin-top:3px;">${esc(t.branch)}</div>`:''}</td><td>${esc(t.phone||'-')}</td><td>${esc(t.subjects||'-')}</td><td class="num">${payLabel}</td>
+      <td>${esc(t.name)}</td><td><span class="tag info">${esc(t.role||'مدرس')}</span>${t.academicManager===true?' <span class="tag income">مدیر علمی</span>':''}${t.branch?`<div style="font-size:11px; color:var(--text-dim); margin-top:3px;">${esc(t.branch)}</div>`:''}</td><td>${esc(t.phone||'-')}</td><td>${esc(t.subjects||'-')}</td><td class="num">${payLabel}</td>
       <td class="num">${faDigits(classes.length)}</td><td>${esc(names)}</td>
       <td><div class="row-actions">
         <button class="icon-btn" onclick="openTeacherModal('${escJs(t.id)}')" title="ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
@@ -3394,9 +3445,11 @@ function renderAttendanceClassOptions(){
   const sel = document.getElementById('att-class-select'); if(!sel) return;
   const prevVal = sel.value;
   let classList = db.classes;
-  if(currentRole==='teacher') classList = classList.filter(c=>classHasTeacher(c, currentTeacherId));
+  if(isPlainTeacher()) classList = classList.filter(c=>classHasTeacher(c, currentTeacherId) && classStatus(c)!=='پایان‌یافته');
+  // Running and upcoming classes first; finished ones (the archive) at the end.
+  classList = classList.slice().sort((a,b)=>(classStatus(a)==='پایان‌یافته')-(classStatus(b)==='پایان‌یافته'));
   sel.innerHTML = '<option value="">انتخاب کنید</option>' + classList.map(c=>
-    `<option value="${esc(c.id)}">${esc(c.name||c.category)} · ${esc(c.branch||'-')}</option>`
+    `<option value="${esc(c.id)}">${esc(c.name||c.category)} · ${esc(c.branch||'-')}${classStatus(c)==='پایان‌یافته'?' · بایگانی':''}</option>`
   ).join('');
   if(classList.some(c=>c.id===prevVal)) sel.value = prevVal;
   renderAttendanceGrid();

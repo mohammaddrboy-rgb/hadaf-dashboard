@@ -217,6 +217,12 @@ function protectOnWrite(session, incoming, current) {
     });
   }
   if (!isShareholder) {
+    // Only shareholders grant or remove the academic-manager permission.
+    const prevAcademic = new Map((current.teachers || []).filter((t) => t && t.id).map((t) => [t.id, t.academicManager === true]));
+    (incoming.teachers || []).forEach((t) => {
+      if (!t || typeof t !== 'object') return;
+      if (prevAcademic.get(t.id)) t.academicManager = true; else delete t.academicManager;
+    });
     for (const k of SHAREHOLDER_ONLY_KEYS) {
       if (current[k] === undefined) delete incoming[k]; else incoming[k] = current[k];
     }

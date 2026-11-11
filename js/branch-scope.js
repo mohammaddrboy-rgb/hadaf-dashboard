@@ -4,7 +4,8 @@
  * (require('../js/branch-scope.js')), so both apply the same rules.
  *
  * Branch managers: Aminullah Zafari — شعبه مرکزی, Sharif Wafa — شعبه قلعه نو,
- * Barat Ebrahimi — شعبه سرپل (KNOWN_MANAGERS below).
+ * Barat Ebrahimi — شعبه سرپل (KNOWN_MANAGERS below). Academic manager:
+ * Zarghamuddin Azizi (KNOWN_ACADEMIC).
  *
  * «آنلاین» (Online) is a unit like a branch: all online classes, their
  * registrations, costs and teachers' pay belong to it. The online manager
@@ -92,8 +93,37 @@
       if (b && t.branch !== b) { t.branch = b; changed = true; }
     });
     if (reassign) { data.managerBranchAssignment = MANAGER_ASSIGNMENT; changed = true; }
+    // The named academic manager gets the permission once; a shareholder's later change stays.
+    if (data.academicAssignment !== ACADEMIC_ASSIGNMENT) {
+      arr(data.teachers).forEach(function (t) {
+        if (isObj(t) && knownAcademic(t.name) && t.academicManager !== true) { t.academicManager = true; changed = true; }
+      });
+      data.academicAssignment = ACADEMIC_ASSIGNMENT;
+      changed = true;
+    }
     return changed;
   }
+
+  /* A class belongs to a unit when it is filed under it; the online unit also
+     has every class held fully online (mode «آنلاین»), whatever branch it is
+     filed under. */
+  function classInScope(c, B) {
+    if (!B || !isObj(c)) return false;
+    return c.branch === B || (B === ONLINE && c.mode === ONLINE);
+  }
+
+  /* Academic manager: a teacher who also oversees teaching. Stored as
+     `academicManager: true` on their personnel record (still role «مدرس»);
+     they see every class and the teachers' present/absent page. */
+  var KNOWN_ACADEMIC = [[['ضرغام', 'zargham'], ['عزیزی', 'azizi']]];
+  var ACADEMIC_ASSIGNMENT = 1;
+  function knownAcademic(name) {
+    var n = normName(name);
+    return !!n && KNOWN_ACADEMIC.some(function (parts) {
+      return parts.every(function (alts) { return alts.some(function (a) { return n.indexOf(normName(a)) >= 0; }); });
+    });
+  }
+  function isAcademicManager(t) { return isObj(t) && t.academicManager === true; }
 
   function managerBranch(data, actorId) {
     var t = arr(data && data.teachers).find(function (x) { return isObj(x) && x.id === actorId; });
@@ -105,18 +135,18 @@
      collection because later rules depend on earlier ones. */
   function Ctx(data, branch, actorId, actorName) {
     var B = branch;
-    var classIn = {}, classTeachers = {}, enrollIn = {}, profileIn = {}, teacherIn = {};
+    var classIn = {}, teachesAny = {}, teachesIn = {}, enrollIn = {}, profileIn = {}, teacherIn = {};
     arr(data.classes).forEach(function (c) {
       if (!isObj(c)) return;
-      [c.teacherId, c.teacher2Id].forEach(function (tid) { if (tid) (classTeachers[tid] = classTeachers[tid] || {})[c.branch || ''] = 1; });
-      if (B && c.branch === B) classIn[c.id] = 1;
+      var inScope = classInScope(c, B);
+      if (inScope) classIn[c.id] = 1;
+      [c.teacherId, c.teacher2Id].forEach(function (tid) { if (!tid) return; teachesAny[tid] = 1; if (inScope) teachesIn[tid] = 1; });
     });
     arr(data.students).forEach(function (s) { if (isObj(s) && classIn[s.classId]) { enrollIn[s.id] = 1; profileIn[s.profileId] = 1; } });
     arr(data.studentProfiles).forEach(function (p) { if (isObj(p) && B && p.branch === B) profileIn[p.id] = 1; });
     arr(data.teachers).forEach(function (t) {
       if (!isObj(t)) return;
-      var teaches = classTeachers[t.id];
-      if (t.id === actorId || (B && (t.branch === B || (teaches && teaches[B]))) || (B && !t.branch && !teaches)) teacherIn[t.id] = 1;
+      if (t.id === actorId || (B && (t.branch === B || teachesIn[t.id])) || (B && !t.branch && !teachesAny[t.id])) teacherIn[t.id] = 1;
     });
     this.rules = {
       classes: function (c) { return !!classIn[c.id]; },
@@ -291,7 +321,8 @@
 
   return {
     BRANCHES: BRANCHES, ONLINE: ONLINE, MANAGER_ROLE: MANAGER_ROLE, ONLINE_MANAGER_ROLE: ONLINE_MANAGER_ROLE,
-    isManagerRole: isManagerRole, SCOPED: SCOPED,
+    isManagerRole: isManagerRole, SCOPED: SCOPED, classInScope: classInScope,
+    isAcademicManager: isAcademicManager, knownAcademic: knownAcademic,
     migrate: migrate, managerBranch: managerBranch, knownManagerBranch: knownManagerBranch,
     scopeView: scopeView, mergeWrite: mergeWrite, fixDuplicateCodes: fixDuplicateCodes,
   };
