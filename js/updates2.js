@@ -98,8 +98,16 @@ function teacherDisciplineTotals(teacherId){
   (db.teacherAttendance||[]).forEach(r=>{ const v=r.marks?r.marks[teacherId]:undefined; if(v==='present')present++; else if(v==='tardy')tardy++; else if(v==='absent')absent++; });
   return { present, tardy, absent };
 }
+/* The academic manager marks teachers only (present/late/absent), not the
+   working hours that change hourly staff's pay. */
+function canMarkDiscipline(teacherId){
+  if(currentRole==='shareholder' || currentRole==='manager') return true;
+  if(!isAcademicManager()) return false;
+  const t = db.teachers.find(x=>x.id===teacherId);
+  return !!t && (t.role||'مدرس')==='مدرس';
+}
 function setTeacherDiscipline(date, teacherId, status){
-  if(currentRole!=='shareholder' && currentRole!=='manager') return;
+  if(!canMarkDiscipline(teacherId)) return;
   let rec = teacherDisciplineRecord(date);
   if(!rec){ rec = { date, marks:{} }; db.teacherAttendance.push(rec); }
   if(!rec.marks) rec.marks = {};
@@ -139,18 +147,19 @@ let teacherDisciplineDate = todayISO();
 function loadTeacherDisciplineDate(){ teacherDisciplineDate = jalaliPickerValue('tdisc-date'); renderTeacherDiscipline(); }
 function renderTeacherDiscipline(){
   const root = document.getElementById('teacher-discipline-root'); if(!root) return;
-  if(currentRole!=='shareholder' && currentRole!=='manager'){
+  const academic = isAcademicManager();
+  if(currentRole!=='shareholder' && currentRole!=='manager' && !academic){
     root.innerHTML = `<div class="panel"><p style="color:var(--text-dim); text-align:center; padding:12px;">این بخش فقط برای سهامداران و مدیران شعبه است.</p></div>`;
     return;
   }
-  const personnel = db.teachers || [];
+  const personnel = academic ? (db.teachers||[]).filter(t=>(t.role||'مدرس')==='مدرس') : (db.teachers || []);
   const rec = teacherDisciplineRecord(teacherDisciplineDate);
   const rowFor = t=>{
     const cur = rec && rec.marks ? rec.marks[t.id] : undefined;
     const btn=(st,label)=>`<button class="btn ${cur===st?'':'ghost'} small" onclick="setTeacherDiscipline('${escJs(teacherDisciplineDate)}','${escJs(t.id)}','${escJs(st)}')">${esc(label)}</button>`;
     const tot = teacherDisciplineTotals(t.id);
     let hoursCell = '<span style="color:var(--text-faint);">—</span>';
-    if(t.payType===PAY_HOURLY){
+    if(t.payType===PAY_HOURLY && !academic){
       const h = rec && rec.hours ? rec.hours[t.id] : undefined;
       const agreed = Number(t.dailyHours)||0;
       const extra = h!==undefined ? Math.max(0, Number(h)-agreed) : 0;
@@ -167,7 +176,7 @@ function renderTeacherDiscipline(){
     </tr>`;
   };
   root.innerHTML = `<div class="panel">
-    <div class="panel-head"><h2>انضباط پرسنل (حاضر / ناوقت / غیرحاضر)</h2></div>
+    <div class="panel-head"><h2>${academic ? 'حضور مدرسان (حاضر / ناوقت / غیرحاضر)' : 'انضباط پرسنل (حاضر / ناوقت / غیرحاضر)'}</h2></div>
     <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 12px;">برای هر تاریخ، وضعیت هر مدرس/پرسنل را با کلیک روی «حاضر»، «ناوقت» یا «غیرحاضر» ثبت کنید. برای پرسنلی که حقوق «ساعتی» دارند، ساعات کار همان روز را هم وارد کنید؛ هر ساعت بیشتر از ساعات توافق‌شده با نرخ ساعتی خودشان به حقوق اضافه می‌شود. ستون آخر مجموع کل را نشان می‌دهد.</p>
     <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
       <div class="field" style="margin:0;"><label>تاریخ</label>${jalaliPicker('tdisc-date', teacherDisciplineDate)}</div>
@@ -231,6 +240,9 @@ function renderStudentSelf(){
 
 /* ---------------- Login-page notifications (Dari changelog) ---------------- */
 const HADAF_CHANGELOG = [
+  { date:'۱۴۰۵/۰۸/۲۰', text:'مدیر آنلاین اکنون همهٔ صنف‌های آنلاین را می‌بیند، حتی اگر زیر یک شعبه ثبت شده باشند؛ صنف‌های حضوری و سایر اطلاعات شعبه‌ها را نمی‌بیند.' },
+  { date:'۱۴۰۵/۰۸/۲۰', text:'نقش «مدیر علمی»: ضرغام‌الدین عزیزی مدرس باقی می‌ماند و علاوه بر آن همهٔ صنف‌های آنلاین و حضوری و حضور مدرسان را می‌بیند. سهامداران این دسترسی را در پروندهٔ پرسنل تعیین می‌کنند.' },
+  { date:'۱۴۰۵/۰۸/۲۰', text:'صنف‌های پایان‌یافته بایگانی می‌شوند: در فهرست مدرسان دیده نمی‌شوند و برای مدیران و سهامداران از گزینهٔ «بایگانی» در صفحهٔ صنف‌ها قابل دیدن است.' },
   { date:'۱۴۰۵/۰۸/۰۷', text:'داشبورد اکنون دو زبانه است: با دکمهٔ «English» در صفحهٔ ورود یا بالای صفحه، زبان به انگلیسی (چپ‌به‌راست) تغییر می‌کند؛ رسیدها و خروجی‌های اکسل هم به زبان انتخاب‌شده هستند. نام‌ها و یادداشت‌هایی که کاربران نوشته‌اند همان‌طور که تایپ شده‌اند باقی می‌مانند.' },
   { date:'۱۴۰۵/۰۸/۰۷', text:'بخش «آنلاین» در کنار شعبه‌ها و نقش جدید «مدیر آنلاین» اضافه شد. مدیر آنلاین صنف‌های آنلاین، ثبت‌نام و شهریهٔ آن‌ها، هزینه‌های آنلاین (از جمله اسپانسر فیسبوک)، حقوق مدرسان آنلاین و گزارش‌های آنلاین را مدیریت می‌کند و فقط اطلاعات آنلاین را می‌بیند.' },
   { date:'۱۴۰۵/۰۸/۰۷', text:'قیمت پیش‌فرض کارت شاگردی در ثبت‌نام جدید ۵۰ افغانی شد.' },

@@ -21,7 +21,7 @@
  * ============================================================ */
 (function () {
   'use strict';
-  var DICT_VERSION = '1.0';
+  var DICT_VERSION = '1.1';
   var lang = 'fa';
   try { lang = localStorage.getItem('hadaf_lang') === 'en' ? 'en' : 'fa'; } catch (e) {}
   var en = lang === 'en';

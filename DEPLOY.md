@@ -1,3 +1,47 @@
+# Latest update: online classes, academic manager, class archive (November 2026)
+
+- **Online manager** now sees every class held fully online (mode «آنلاین»),
+  including online classes filed under a branch, with their registrations,
+  attendance and teachers; she still sees nothing else from the branches
+  (no in-person classes, branch expenses, etc.). The server enforces this.
+  When she edits such a class it keeps its branch and stays online.
+- **Academic manager**: a permission on a teacher's personnel record
+  (`academicManager: true`); the person stays a teacher (same login tab, same
+  pay) and also sees every class — online and in person, all branches — with
+  their attendance and grades, plus the teachers' present/late/absent page
+  (teachers only; working hours that change pay stay with managers). When
+  the sync server starts it gives this permission once to **Zarghamuddin
+  Azizi** (matched by name, Dari or English spelling). Only shareholders can
+  grant or remove it afterwards («مدیر علمی» tick in «پرسنل و مدرسان»); the
+  server ignores changes to it from anyone else.
+- **Finished classes are archived**: teachers no longer see finished classes
+  in their class list or attendance; managers, shareholders and the academic
+  manager see running and upcoming classes by default and open finished ones
+  with «بایگانی» (Archive) on the Classes page.
+- Also: data loaded from the server now always has every list the app
+  expects (a missing teachers' attendance list could stop "present" marks).
+
+## Steps
+
+1. Merge the pull request into `main`.
+2. Back up the data:
+   `sudo cp -a /var/www/hadaf-data /var/www/hadaf-data.backup-$(date +%Y%m%d-%H%M)`
+3. Copy `index.html`, `css/` and `js/` into the web root, and update the
+   `server/` folder the service runs from.
+4. **Restart the sync server** (`server/server.js` and `js/branch-scope.js`
+   changed; the academic-manager permission is given at start).
+5. Check:
+   - `curl -s https://SITE/ | grep -o 'js/app.js?v=[0-9.]*\|js/i18n.js?v=[0-9.]*'`
+     prints `js/i18n.js?v=1.1` and `js/app.js?v=6.0`;
+   - the academic manager:
+     `sudo node -e 'const d=require("/var/www/hadaf-data/db.json");(d.teachers||[]).filter(t=>t.academicManager).forEach(t=>console.log(t.name,"|",t.code,"|",t.role))'`
+     must list Zarghamuddin Azizi. If it lists nobody (his name is spelled
+     differently), a shareholder ticks «مدیر علمی» in his personnel record;
+   - log in on the «مدرس» tab as him: the header says «مدرس و مدیر علمی».
+6. Staff reload every open dashboard tab.
+
+---
+
 # Latest update: Dari + English (October 2026)
 
 The whole dashboard can now be used in English. A language button
